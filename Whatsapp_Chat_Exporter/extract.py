@@ -8,10 +8,17 @@ from pathlib import Path
 from mimetypes import MimeTypes
 from hashlib import sha256
 from base64 import b64decode, b64encode
-from Whatsapp_Chat_Exporter.data_model import ChatStore, Message
-from Whatsapp_Chat_Exporter.utility import MAX_SIZE, ROW_SIZE, DbType, determine_metadata, get_status_location
-from Whatsapp_Chat_Exporter.utility import rendering, Crypt, Device, get_file_name, setup_template
-from Whatsapp_Chat_Exporter.utility import brute_force_offset, CRYPT14_OFFSETS, JidType
+
+# from Whatsapp_Chat_Exporter.data_model import ChatStore, Message
+from data_model import ChatStore, ChronoStore, Message
+
+# from Whatsapp_Chat_Exporter.utility import MAX_SIZE, ROW_SIZE, DbType, determine_metadata, get_status_location
+# from Whatsapp_Chat_Exporter.utility import rendering, Crypt, Device, get_file_name, setup_template
+# from Whatsapp_Chat_Exporter.utility import brute_force_offset, CRYPT14_OFFSETS, JidType
+from utility import MAX_SIZE, ROW_SIZE, DbType, determine_metadata, get_status_location
+from utility import rendering, Crypt, Device, get_file_name, setup_template
+from utility import brute_force_offset, CRYPT14_OFFSETS, JidType
+from pprint import pprint
 
 try:
     import zlib
@@ -165,17 +172,19 @@ def contacts(db, data):
         row = c.fetchone()
 
 
-def messages(db, data, media_folder, timezone_offset):
+def messages(db, data, media_folder, timezone_offset, dateData):
     # Get message history
+    table_message = False
     c = db.cursor()
     try:
         c.execute("""SELECT count() FROM messages""")
     except sqlite3.OperationalError:
+        table_message = True
         c.execute("""SELECT count() FROM message""")
     total_row_number = c.fetchone()[0]
     print(f"Processing messages...(0/{total_row_number})", end="\r")
 
-    try:
+    if not table_message:
         c.execute("""SELECT messages.key_remote_jid,
                             messages._id,
                             messages.key_from_me,
@@ -229,77 +238,80 @@ def messages(db, data, media_folder, timezone_offset):
                     GROUP BY message._id
                     ORDER BY timestamp ASC;"""
         )
-    except sqlite3.OperationalError:
-        try:
-            c.execute("""SELECT jid_global.raw_string as key_remote_jid,
-                            message._id,
-                            message.from_me as key_from_me,
-                            message.timestamp,
-                            message.text_data as data,
-                            message.status,
-                            message_future.version as edit_version,
-                            message_thumbnail.thumbnail as thumb_image,
-                            message_media.file_path as remote_resource,
-                            message_location.latitude,
-                            message_location.longitude,
-                            message_quoted.key_id as quoted,
-                            message.key_id,
-                            message_quoted.text_data as quoted_data,
-                            message.message_type as media_wa_type,
-                            jid_group.raw_string as group_sender_jid,
-                            chat.subject as chat_subject,
-							missed_call_logs.video_call,
-                            message.sender_jid_row_id,
-                            message_system.action_type,
-                            message_system_group.is_me_joined,
-                            jid_old.raw_string as old_jid,
-                            jid_new.raw_string as new_jid,
-                            jid_global.type as jid_type,
-                            group_concat(receipt_user.receipt_timestamp) as receipt_timestamp,
-                            group_concat(message.received_timestamp) as received_timestamp,
-                            group_concat(receipt_user.read_timestamp) as read_timestamp,
-                            group_concat(receipt_user.played_timestamp) as played_timestamp
-                    FROM message
-                        LEFT JOIN message_quoted
-                            ON message_quoted.message_row_id = message._id
-                        LEFT JOIN message_location
-                            ON message_location.message_row_id = message._id
-                        LEFT JOIN message_media
-                            ON message_media.message_row_id = message._id
-                        LEFT JOIN message_thumbnail
-                            ON message_thumbnail.message_row_id = message._id
-                        LEFT JOIN message_future
-                            ON message_future.message_row_id = message._id
-                        LEFT JOIN chat
-                            ON chat._id = message.chat_row_id
-                        INNER JOIN jid jid_global
-                            ON jid_global._id = chat.jid_row_id
-                        LEFT JOIN jid jid_group
-                            ON jid_group._id = message.sender_jid_row_id
-						LEFT JOIN missed_call_logs
-							ON message._id = missed_call_logs.message_row_id
-                        LEFT JOIN message_system
-                            ON message_system.message_row_id = message._id
-                        LEFT JOIN message_system_group
-                            ON message_system_group.message_row_id = message._id
-                        LEFT JOIN message_system_number_change
-                            ON message_system_number_change.message_row_id = message._id
-                        LEFT JOIN jid jid_old
-                            ON jid_old._id = message_system_number_change.old_jid_row_id
-                        LEFT JOIN jid jid_new
-                            ON jid_new._id = message_system_number_change.new_jid_row_id
-                        LEFT JOIN receipt_user
-                            ON receipt_user.message_row_id = message._id
-                    WHERE key_remote_jid <> '-1'
-                    GROUP BY message._id;"""
-            )
-        except Exception as e:
-            raise e
-        else:
-            table_message = True
     else:
-        table_message = False
+        c.execute("""SELECT jid_global.raw_string as key_remote_jid,
+                        message._id,
+                        message.from_me as key_from_me,
+                        message.timestamp,
+                        message.text_data as data,
+                        message.status,
+                        message_future.version as edit_version,
+                        message_thumbnail.thumbnail as thumb_image,
+                        message_media.file_path as remote_resource,
+                        message_location.latitude,
+                        message_location.longitude,
+                        message_quoted.key_id as quoted,
+                        message.key_id,
+                        message_quoted.text_data as quoted_data,
+                        message.message_type as media_wa_type,
+                        jid_group.raw_string as group_sender_jid,
+                        chat.subject as chat_subject,
+						missed_call_logs.video_call,
+                        message.sender_jid_row_id,
+                        message_system.action_type,
+                        message_system_group.is_me_joined,
+                        jid_old.raw_string as old_jid,
+                        jid_new.raw_string as new_jid,
+                        jid_global.type as jid_type,
+                        group_concat(receipt_user.receipt_timestamp) as receipt_timestamp,
+                        group_concat(message.received_timestamp) as received_timestamp,
+                        group_concat(receipt_user.read_timestamp) as read_timestamp,
+                        group_concat(receipt_user.played_timestamp) as played_timestamp
+                FROM message
+                    LEFT JOIN message_quoted
+                        ON message_quoted.message_row_id = message._id
+                    LEFT JOIN message_location
+                        ON message_location.message_row_id = message._id
+                    LEFT JOIN message_media
+                        ON message_media.message_row_id = message._id
+                    LEFT JOIN message_thumbnail
+                        ON message_thumbnail.message_row_id = message._id
+                    LEFT JOIN message_future
+                        ON message_future.message_row_id = message._id
+                    LEFT JOIN chat
+                        ON chat._id = message.chat_row_id
+                    INNER JOIN jid jid_global
+                        ON jid_global._id = chat.jid_row_id
+                    LEFT JOIN jid jid_group
+                        ON jid_group._id = message.sender_jid_row_id
+					LEFT JOIN missed_call_logs
+						ON message._id = missed_call_logs.message_row_id
+                    LEFT JOIN message_system
+                        ON message_system.message_row_id = message._id
+                    LEFT JOIN message_system_group
+                        ON message_system_group.message_row_id = message._id
+                    LEFT JOIN message_system_number_change
+                        ON message_system_number_change.message_row_id = message._id
+                    LEFT JOIN jid jid_old
+                        ON jid_old._id = message_system_number_change.old_jid_row_id
+                    LEFT JOIN jid jid_new
+                        ON jid_new._id = message_system_number_change.new_jid_row_id
+                    LEFT JOIN receipt_user
+                        ON receipt_user.message_row_id = message._id
+                WHERE key_remote_jid <> '-1'
+                GROUP BY message._id"""
+            )
+
     i = 0
+
+    # dateData = {}
+
+    # print(data.items())
+
+    # for k, v in enumerate(data):
+    #    print(v)
+    #    print(data[v].to_json())
+
     while True:
         try:
             content = c.fetchone()
@@ -307,6 +319,9 @@ def messages(db, data, media_folder, timezone_offset):
             continue
         else:
             break
+
+    # ['key_remote_jid', '_id', 'key_from_me', 'timestamp', 'data', 'status', 'edit_version', 'thumb_image', 'remote_resource', 'media_wa_type', 'latitude', 'longitude', 'quoted', 'key_id', 'quoted_data', 'message_type', 'group_sender_jid', 'chat_subject']
+
     while content is not None:
         if content["key_remote_jid"] not in data:
             data[content["key_remote_jid"]] = ChatStore(Device.ANDROID, content["chat_subject"])
@@ -321,6 +336,9 @@ def messages(db, data, media_folder, timezone_offset):
             timestamp=content["timestamp"],
             time=content["timestamp"],
             key_id=content["key_id"],
+            remote_jid=content["key_remote_jid"],
+            cc=content,
+            sender=content["sender_jid_row_id"],
             timezone_offset=timezone_offset
         )
         if isinstance(content["data"], bytes):
@@ -353,6 +371,10 @@ def messages(db, data, media_folder, timezone_offset):
             message.sender = name or fallback
         else:
             message.sender = None
+
+            # data[content["key_remote_jid"]].messages[content["_id"]].sender = None
+            # dateData.messages[oId].sender = content['key_remote_jid']
+            # print(chronoData.messages[content["_id"]].to_json())
 
         if content["quoted"] is not None:
             message.reply = content["quoted"]
@@ -429,6 +451,10 @@ def messages(db, data, media_folder, timezone_offset):
                     msg = "Message deleted"
                     message.meta = True
                 else:
+                    # if _jid in data:
+                    #     name = data[_jid].name
+                    #     fallback = _jid.split('@')[0] if "@" in _jid else None
+
                     if content["media_wa_type"] == 5:
                         msg = f"Location shared: {content['latitude'], content['longitude']}"
                         message.meta = True
@@ -442,6 +468,20 @@ def messages(db, data, media_folder, timezone_offset):
             message.data = msg
 
         data[content["key_remote_jid"]].add_message(content["_id"], message)
+
+            # data[content["key_remote_jid"]].messages[content["_id"]].data = msg
+            # dateData.messages[oId].data = msg
+            # dateData.messages[oId].sender = name # = msg
+
+            # print(chronoData.messages[content["_id"]].to_json())
+
+        # print(chronoData.messages[content["_id"]].to_json())
+
+        # if (i == 100):
+            # raise Exception('100')
+
+        # if data[content["key_remote_jid"]].messages[content["_id"]] is not None:
+
         i += 1
         if i % 1000 == 0:
             print(f"Processing messages...({i}/{total_row_number})", end="\r")
@@ -452,10 +492,10 @@ def messages(db, data, media_folder, timezone_offset):
                 continue
             else:
                 break
-    print(f"Processing messages...({total_row_number}/{total_row_number})", end="\r")
+    print(f"Processing messages...({i}/{total_row_number})", end="\r")
 
 
-def media(db, data, media_folder):
+def media(db, data, media_folder, dateData):
     # Get media
     c = db.cursor()
     c.execute("""SELECT count() FROM message_media""")
@@ -504,6 +544,11 @@ def media(db, data, media_folder):
     mime = MimeTypes()
     if not os.path.isdir(f"{media_folder}/thumbnails"):
         Path(f"{media_folder}/thumbnails").mkdir(parents=True, exist_ok=True)
+
+    mms = 0
+    mm = 0
+    x = 0
+
     while content is not None:
         file_path = f"{media_folder}/{content['file_path']}"
         message = data[content["key_remote_jid"]].messages[content["message_row_id"]]
@@ -539,6 +584,33 @@ def media(db, data, media_folder):
                 with open(thumb_path, "wb") as f:
                     f.write(content["thumbnail"])
             message.thumb = thumb_path
+
+            # if "https://mmg" in content[4]:
+            # try:
+            # r = requests.get(content[3])
+            # if r.status_code != 200:
+            # raise RuntimeError()
+            # except:
+            # data[content[0]]["messages"][content[1]]["data"] = "{The media is missing}"
+            # data[content[0]]["messages"][content[1]]["media"] = True
+            # data[content[0]]["messages"][content[1]]["mime"] = "media"
+            # else:
+            # print("Missing: "+file_path, dict(content))
+            # if file_path != 'None':
+            #     if content['mime_type'] is not None:
+            #         if content['mime_type'] == 'image/jpeg':
+            #             mm += 1
+            #             print(file_path)
+
+            #     if "Sent" in file_path:
+            #         mms += 1
+            #         print(file_path+',sent')
+                    
+            # data[content["key_remote_jid"]].messages[content["message_row_id"]].data = "The media is missing (" + file_path + ")"
+            # data[content["key_remote_jid"]].messages[content["message_row_id"]].mime = "media"
+            # data[content["key_remote_jid"]].messages[content["message_row_id"]].meta = True
+            # dateData.messages["message_row_id"] = data[content["key_remote_jid"]].messages[content["message_row_id"]]
+
         i += 1
         if i % 100 == 0:
             print(f"Processing media...({i}/{total_row_number})", end="\r")
@@ -546,8 +618,24 @@ def media(db, data, media_folder):
     print(
         f"Processing media...({total_row_number}/{total_row_number})", end="\r")
 
+    print(f"Missing media (image/jpeg): {mm}")
+    print(f"Missing media sent: {mms}")
 
-def vcard(db, data, media_folder):
+
+
+def split_dictionary(input_dict, chunk_size):
+    res = []
+    new_dict = {}
+    for k, v in input_dict.items():
+        if len(new_dict) < chunk_size:
+            new_dict[k] = v
+        else:
+            res.append(new_dict)
+            new_dict = {k: v}
+    res.append(new_dict)
+    return res;
+
+def vcard(db, data, media_folder, dateData):
     c = db.cursor()
     try:
         c.execute("""SELECT message_row_id,
@@ -589,6 +677,8 @@ def vcard(db, data, media_folder):
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(row["vcard"])
         message = data[row["key_remote_jid"]].messages[row["message_row_id"]]
+        # dateData.messages["message_row_id"] = data[row["key_remote_jid"]].messages[row["message_row_id"]]
+
         message.data = media_name + \
             "The vCard file cannot be displayed here, " \
             f"however it should be located at {file_path}"
@@ -623,19 +713,24 @@ def calls(db, data, timezone_offset):
     chat = ChatStore(Device.ANDROID, "WhatsApp Calls")
     content = c.fetchone()
     while content is not None:
-        call = Message(
-            from_me=content["from_me"],
-            timestamp=content["timestamp"],
-            time=content["timestamp"],
-            key_id=content["call_id"],
-            timezone_offset=timezone_offset
-        )
         _jid = content["raw_string"]
         name = data[_jid].name if _jid in data else content["chat_subject"] or None
         if _jid is not None and "@" in _jid:
             fallback = _jid.split('@')[0]
         else:
             fallback = None
+
+        call = Message(
+            from_me=content["from_me"],
+            timestamp=content["timestamp"],
+            time=content["timestamp"],
+            key_id=content["call_id"],
+            remote_jid=content["raw_string"],
+            cc=content,
+            sender=name or fallback,
+            timezone_offset=timezone_offset,
+        )
+
         call.sender = name or fallback
         call.meta = True
         call.data = (
@@ -743,3 +838,220 @@ def create_html(
             print(f"Generating chats...({current}/{total_row_number})", end="\r")
 
     print(f"Generating chats...({total_row_number}/{total_row_number})", end="\r")
+
+
+def create_html_chrono(
+        data,
+        dateData,
+        output_folder,
+        template=None,
+        embedded=False,
+        offline_static=False,
+        maximum_size=None,
+        no_avatar=False
+    ):
+
+    template = setup_template(template, no_avatar)
+
+    total_row_number = len(dateData.messages)
+    print(f"\nGenerating chats...(0/{total_row_number})", end="\r")
+
+    if not os.path.isdir(output_folder):
+        os.mkdir(output_folder)
+
+    w3css = get_status_location(output_folder, offline_static)
+
+    # split = split_dictionary(chronoData.messages, 1000)
+    # first = split[0]
+    # print(split)
+
+    for current, date in enumerate(dateData.dates):
+        print(date)
+
+        safe_file_name = f"output-{date}"
+
+        output_file_name = f"{output_folder}/{safe_file_name}.html"
+
+        # msgs=dateData.dates[date].values(),
+        rendering(
+            output_file_name,
+            template,
+            name,
+            chat.get_messages(),
+            contact,
+            w3css,
+            False,
+            chat
+        )
+        if current % 10 == 0:
+            print(f"Generating chats...({current}/{total_row_number})", end="\r")
+
+    print(f"Generating chats...({total_row_number}/{total_row_number})", end="\r")
+
+if __name__ == "__main__":
+    from optparse import OptionParser
+    parser = OptionParser()
+    parser.add_option(
+        "-w",
+        "--wa",
+        dest="wa",
+        default="wa.db",
+        help="Path to contact database")
+    parser.add_option(
+        "-m",
+        "--media",
+        dest="media",
+        default="WhatsApp",
+        help="Path to WhatsApp media folder"
+    )
+    # parser.add_option(
+    #     "-t",
+    #     "--template",
+    #     dest="html",
+    #     default="wa.db",
+    #     help="Path to HTML template")
+    (options, args) = parser.parse_args()
+    msg_db = "msgstore.db"
+    output_folder = "temp"
+    contact_db = options.wa
+    media_folder = options.media
+
+    if len(args) == 1:
+        msg_db = args[0]
+    elif len(args) == 2:
+        msg_db = args[0]
+        output_folder = args[1]
+
+    data = {}
+    dateData = ChronoStore()
+
+    if os.path.isfile(contact_db):
+        with sqlite3.connect(contact_db) as db:
+            contacts(db, data)
+    if os.path.isfile(msg_db):
+        with sqlite3.connect(msg_db) as db:
+            messages(db, data, dateData)
+            media(db, data, dateData, media_folder)
+            vcard(db, data)
+        create_html(data, dateData, output_folder, 'chrono.html')
+        # create_html(data, chronoData, output_folder)
+
+    if not os.path.isdir(f"{output_folder}/WhatsApp"):
+        shutil.move(media_folder, f"{output_folder}/")
+
+    with open("result.json", "w") as f:
+        data = json.dumps(data)
+        print(f"\nWriting JSON file...({int(len(data)/1024/1024)}MB)")
+        f.write(data)
+
+    print("Everything is done!")
+
+'''
+        # a chat_subject implies that it is a group chat message
+        if content["chat_subject"] is not None:
+            _jid = content["group_sender_jid"]
+        else:
+            _jid = content["key_remote_jid"]
+
+        if _jid is not None:
+            # attempt to get a name from contacts data, orht
+            name = False
+                
+            if _jid in data:
+                name = data[_jid].name
+
+            fallback = _jid.split('@')[0] if "@" in _jid else None
+        
+        if not name:
+            name = fallback
+             
+        oId = content['_id']
+
+        oMsg = Message(
+            from_me=content["key_from_me"],
+            timestamp=content["timestamp"],
+            time=content["timestamp"],
+            key_id=content["key_id"],
+            remote_jid=content["key_remote_jid"],
+            cc=content,
+            sender=name,
+        )
+
+        jss = oMsg.to_json()
+
+        # for k in jss:
+        #     print (k, jss[k])
+
+        if content["key_remote_jid"] not in data:
+            # contact not found
+            data[content["key_remote_jid"]] = ChatStore()
+            # print("Added missing id: "+content["key_remote_id"]+" to data")
+        if content["key_remote_jid"] is None:
+            raise Exception('No key_remote_jid - panic.')
+            continue # Not sure
+
+        data[content["key_remote_jid"]].add_message(oId, oMsg)
+        dateData.add_message(oId, oMsg)
+        dateData.messages[oId].sender = name  
+
+        if oMsg.date not in dateData.dates:
+            dateData.dates[oMsg.date] = {}
+
+        dateData.dates[oMsg.date][oId] = oMsg
+
+        if "-" in content["key_remote_jid"] and content["key_from_me"] == 0:
+            name = None
+'''
+
+'''
+        if content["status"] == 6:  # 6 = Metadata, otherwise it's a message
+            if (not table_message and "-" in content["key_remote_jid"]) or \
+               (table_message and content["chat_subject"] is not None):
+                # Is Group
+                if content["data"] is not None:
+                    try:
+                        int(content["data"])
+                    except ValueError:
+                        msg = f"The group name changed to {content['data']}"
+                        data[content["key_remote_jid"]].messages[content["_id"]].data = msg
+                        data[content["key_remote_jid"]].messages[content["_id"]].meta = True
+                        # chronoData.add_message(content["_id"],  data[content["key_remote_jid"]].messages[content["_id"]])
+                    else:
+                        data[content["key_remote_jid"]].delete_message(content["_id"])
+                else:
+                    thumb_image = content["thumb_image"]
+                    if thumb_image is not None:
+                        if b"\x00\x00\x01\x74\x00\x1A" in thumb_image:
+                            # Add user
+                            added = phone_number_re.search(
+                                thumb_image.decode("unicode_escape"))[0]
+                            if added in data:
+                                name_right = data[added].name
+                            else:
+                                name_right = added.split('@')[0]
+                            if content["remote_resource"] is not None:
+                                if content["remote_resource"] in data:
+                                    name_left = data[content["remote_resource"]].name
+                                else:
+                                    name_left = content["remote_resource"].split('@')[0]
+                                msg = f"{name_left} added {name_right or 'You'}"
+                            else:
+                                msg = f"Added {name_right or 'You'}"
+                        elif b"\xac\xed\x00\x05\x74\x00" in thumb_image:
+                            # Changed number
+                            original = content["remote_resource"].split('@')[0]
+                            changed = thumb_image[7:].decode().split('@')[0]
+                            msg = f"{original} changed to {changed}"
+                        data[content["key_remote_jid"]].messages[content["_id"]].data = msg
+                        data[content["key_remote_jid"]].messages[content["_id"]].meta = True
+                        dateData.add_message(content["_id"],  data[content["key_remote_jid"]].messages[content["_id"]])
+                    else:
+                        if content["data"] is None:
+                            data[content["key_remote_jid"]].delete_message(content["_id"])
+            else:
+                # Private chat
+                if content["data"] is None and content["thumb_image"] is None:
+                    # print("Deleted private chat: ", content["_id"])
+                    # print(data[content["key_remote_jid"]].messages[content["_id"]].to_json())
+                    data[content["key_remote_jid"]].delete_message(content["_id"])
+'''

@@ -63,8 +63,32 @@ class ChatStore():
         return self.messages.values()
 
 
+class ChronoStore():
+    def __init__(self):
+        self.messages = {}
+        self.dates = {}
+
+    def add_message(self, id, message):
+        if not isinstance(message, Message):
+            raise TypeError("message must be a Message object")
+        self.messages[id] = message
+
+    def delete_message(self, id):
+        if id in self.messages:
+            del self.messages[id]
+
+    def to_json(self):
+        serialized_msgs = {id: msg.to_json() for id, msg in self.messages.items()}
+        return {'messages' : serialized_msgs}
+
+    def get_last_message(self):
+        return tuple(self.messages.values())[-1]
+
+    def get_messages(self):
+        return self.messages.values()
+
 class Message():
-    def __init__(self, from_me: Union[bool,int], timestamp: int, time: Union[int,float,str], key_id: int, timezone_offset: int = 0):
+    def __init__(self, from_me: Union[bool,int], timestamp: int, time: Union[int,float,str], key_id: int, remote_jid: str, cc, sender: str, timezone_offset: int = 0):
         self.from_me = bool(from_me)
         self.timestamp = timestamp / 1000 if timestamp > 9999999999 else timestamp
         if isinstance(time, int) or isinstance(time, float):
@@ -73,6 +97,10 @@ class Message():
             self.time = time
         else:
             raise TypeError("Time must be a string or number")
+
+        # self.date = datetime.fromtimestamp(time/1000).strftime("%Y-%m-%d")
+        # self.time = datetime.fromtimestamp(time/1000).strftime("%H:%M")
+
         self.media = False
         self.key_id = key_id
         self.meta = False
@@ -80,6 +108,12 @@ class Message():
         self.sender = None
         self.safe = False
         self.mime = None
+
+        # self.cc = cc
+        # self.remote_jid = remote_jid
+        # self.sender = sender
+        # self.subject = cc['chat_subject']
+
         # Extra
         self.reply = None
         self.quoted_data = None
@@ -91,6 +125,7 @@ class Message():
         return {
             'from_me'     : self.from_me,
             'timestamp'   : self.timestamp,
+            # 'date'        : self.date,
             'time'        : self.time,
             'media'       : self.media,
             'key_id'      : self.key_id,
@@ -104,4 +139,7 @@ class Message():
             'caption'     : self.caption,
             'thumb'       : self.thumb,
             'sticker'     : self.sticker
+            # 'remote_jid'  : self.remote_jid,
+            # "subject"     : self.subject,
+            # "sender"      : self.sender,
         }

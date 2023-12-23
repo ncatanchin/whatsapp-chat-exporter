@@ -3,8 +3,10 @@
 import os
 from datetime import datetime
 from mimetypes import MimeTypes
-from Whatsapp_Chat_Exporter.data_model import ChatStore, Message
-from Whatsapp_Chat_Exporter.utility import Device
+# from Whatsapp_Chat_Exporter.data_model import ChatStore, Message
+# from Whatsapp_Chat_Exporter.utility import Device
+from data_model import ChatStore, Message
+from utility import Device
 
 
 def messages(path, data, assume_first_as_me=False):

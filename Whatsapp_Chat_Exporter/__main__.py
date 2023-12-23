@@ -7,10 +7,15 @@ import shutil
 import json
 import string
 import glob
-from Whatsapp_Chat_Exporter import extract_exported, extract_iphone
-from Whatsapp_Chat_Exporter import extract, extract_iphone_media
-from Whatsapp_Chat_Exporter.data_model import ChatStore
-from Whatsapp_Chat_Exporter.utility import Crypt, DbType, check_update, import_from_json
+# from Whatsapp_Chat_Exporter import extract_exported, extract_iphone
+# from Whatsapp_Chat_Exporter import extract, extract_iphone_media
+import extract_exported, extract_iphone
+import extract, extract_iphone_media
+# from Whatsapp_Chat_Exporter.data_model import ChatStore
+# from Whatsapp_Chat_Exporter.utility import Crypt, DbType, check_update, import_from_json
+from data_model import ChatStore, ChronoStore
+from utility import Crypt, DbType, check_update, import_from_json
+
 from argparse import ArgumentParser, SUPPRESS
 from sys import exit
 try:
@@ -234,6 +239,7 @@ def main():
         exit(1)
 
     data = {}
+    chronoData = ChronoStore()
 
     if args.android:
         contacts = extract.contacts
@@ -338,9 +344,9 @@ def main():
         if os.path.isfile(msg_db):
             with sqlite3.connect(msg_db) as db:
                 db.row_factory = sqlite3.Row
-                messages(db, data, args.media, args.timezone_offset)
-                media(db, data, args.media)
-                vcard(db, data, args.media)
+                messages(db, data, args.media, args.timezone_offset, chronoData)
+                media(db, data, args.media, chronoData)
+                vcard(db, data, args.media, chronoData)
                 if args.android:
                     extract.calls(db, data, args.timezone_offset)
             if not args.no_html:
@@ -352,6 +358,16 @@ def main():
                     args.offline,
                     args.size,
                     args.no_avatar
+                )
+                extract.create_html_chrono(
+                    data,
+                    chronoData,
+                    args.output,
+                    # args.template,
+                    'chrono.html',
+                    args.embedded,
+                    args.offline,
+                    args.size
                 )
         else:
             print(
@@ -384,6 +400,16 @@ def main():
                 data,
                 args.output,
                 args.template,
+                args.embedded,
+                args.offline,
+                args.size
+            )
+            extract.create_html_chrono(
+                data,
+                chronoData,
+                args.output,
+                # args.template,
+                'chrono.html',
                 args.embedded,
                 args.offline,
                 args.size

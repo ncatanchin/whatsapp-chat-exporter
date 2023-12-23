@@ -1,0 +1,18 @@
+#!/bin/bash
+
+BASE_DIR=/home/lithium/newfo
+MDB=msgstore.db
+KEY=whatsapp.cryptkey
+WA=wa.db
+STAMP=`date +%Y-%m-%d_%H-%M-%S`
+EXPORT_DIR=/home/lithium/export/$STAMP
+
+mkdir $STAMP
+
+python __main__.py \
+    -a \
+    -m ./WhatsApp \
+    -o /home/lithium/export/$STAMP \
+    -b $BASE_DIR/$MDB \
+    -w $BASE_DIR/$WA \
+    $@
