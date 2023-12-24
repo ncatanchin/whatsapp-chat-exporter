@@ -15,4 +15,5 @@ python __main__.py \
     -o /home/lithium/export/$STAMP \
     -b $BASE_DIR/$MDB \
     -w $BASE_DIR/$WA \
+    --time-offset=10 \
     $@

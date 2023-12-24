@@ -2,6 +2,7 @@
 
 import io
 import os
+import keyboard
 import sqlite3
 import shutil
 import json
@@ -9,10 +10,10 @@ import string
 import glob
 # from Whatsapp_Chat_Exporter import extract_exported, extract_iphone
 # from Whatsapp_Chat_Exporter import extract, extract_iphone_media
-import extract_exported, extract_iphone
-import extract, extract_iphone_media
 # from Whatsapp_Chat_Exporter.data_model import ChatStore
 # from Whatsapp_Chat_Exporter.utility import Crypt, DbType, check_update, import_from_json
+import extract_exported, extract_iphone
+import extract, extract_iphone_media
 from data_model import ChatStore, ChronoStore
 from utility import Crypt, DbType, check_update, import_from_json
 
@@ -239,7 +240,7 @@ def main():
         exit(1)
 
     data = {}
-    chronoData = ChronoStore()
+    chronoData = {}
 
     if args.android:
         contacts = extract.contacts
@@ -348,7 +349,7 @@ def main():
                 media(db, data, args.media, chronoData)
                 vcard(db, data, args.media, chronoData)
                 if args.android:
-                    extract.calls(db, data, args.timezone_offset)
+                    extract.calls(db, data, args.timezone_offset, chronoData)
             if not args.no_html:
                 create_html(
                     data,
@@ -363,11 +364,11 @@ def main():
                     data,
                     chronoData,
                     args.output,
-                    # args.template,
                     'chrono.html',
                     args.embedded,
                     args.offline,
-                    args.size
+                    args.size,
+                    args.no_avatar
                 )
         else:
             print(
@@ -393,6 +394,8 @@ def main():
                     except PermissionError:
                         print("\nCannot remove original WhatsApp directory. "
                             "Perhaps the directory is opened?", end="\n")
+        print("\nAwait keypress", end="\n")
+        a = keyboard.read_key()
     elif args.exported:
         extract_exported.messages(args.exported, data, args.assume_first_as_me)
         if not args.no_html:
@@ -406,14 +409,14 @@ def main():
             )
             extract.create_html_chrono(
                 data,
-                chronoData,
                 args.output,
-                # args.template,
                 'chrono.html',
                 args.embedded,
                 args.offline,
-                args.size
-            )
+                args.size,
+                args.no_avatar,
+                chronoData
+           )
         for file in glob.glob(r'*.*'):
             shutil.copy(file, args.output)
     elif args.import_json:

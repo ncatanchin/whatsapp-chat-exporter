@@ -8,13 +8,13 @@ from pathlib import Path
 from mimetypes import MimeTypes
 from hashlib import sha256
 from base64 import b64decode, b64encode
+from datetime import datetime, tzinfo, timedelta
 
 # from Whatsapp_Chat_Exporter.data_model import ChatStore, Message
-from data_model import ChatStore, ChronoStore, Message
-
 # from Whatsapp_Chat_Exporter.utility import MAX_SIZE, ROW_SIZE, DbType, determine_metadata, get_status_location
 # from Whatsapp_Chat_Exporter.utility import rendering, Crypt, Device, get_file_name, setup_template
 # from Whatsapp_Chat_Exporter.utility import brute_force_offset, CRYPT14_OFFSETS, JidType
+from data_model import ChatStore, ChronoStore, Message, TimeZone
 from utility import MAX_SIZE, ROW_SIZE, DbType, determine_metadata, get_status_location
 from utility import rendering, Crypt, Device, get_file_name, setup_template
 from utility import brute_force_offset, CRYPT14_OFFSETS, JidType
@@ -34,6 +34,7 @@ except ModuleNotFoundError:
 else:
     support_crypt15 = True
 
+# pp = pprint.PrettyPrinter(indent=4)
 
 def _generate_hmac_of_hmac(key_stream):
     key = hmac.new(
@@ -169,8 +170,11 @@ def contacts(db, data):
         data[row["jid"]] = ChatStore(Device.ANDROID, row["display_name"])
         if row["status"] is not None:
             data[row["jid"]].status = row["status"]
-        row = c.fetchone()
 
+        nn = row["display_name"] if row["display_name"] is not None else 'none'
+        print(row["jid"] + " " + nn)
+
+        row = c.fetchone()
 
 def messages(db, data, media_folder, timezone_offset, dateData):
     # Get message history
@@ -301,17 +305,7 @@ def messages(db, data, media_folder, timezone_offset, dateData):
                 WHERE key_remote_jid <> '-1'
                 GROUP BY message._id"""
             )
-
     i = 0
-
-    # dateData = {}
-
-    # print(data.items())
-
-    # for k, v in enumerate(data):
-    #    print(v)
-    #    print(data[v].to_json())
-
     while True:
         try:
             content = c.fetchone()
@@ -323,9 +317,23 @@ def messages(db, data, media_folder, timezone_offset, dateData):
     # ['key_remote_jid', '_id', 'key_from_me', 'timestamp', 'data', 'status', 'edit_version', 'thumb_image', 'remote_resource', 'media_wa_type', 'latitude', 'longitude', 'quoted', 'key_id', 'quoted_data', 'message_type', 'group_sender_jid', 'chat_subject']
 
     while content is not None:
+        print("Lets walk through messages. Here is the first one:")
+        pprint(dict(content))
+        choice = input()
+
         if content["key_remote_jid"] not in data:
             data[content["key_remote_jid"]] = ChatStore(Device.ANDROID, content["chat_subject"])
+
+        # print(f"Timestamp is:") 
+        timestamp = content["timestamp"]
+        timestamp = timestamp / 1000 if timestamp > 9999999999 else timestamp
+
+        date = datetime.fromtimestamp(timestamp, TimeZone(timezone_offset)).strftime("%Y-%m-%d")
+        if date not in dateData:
+            dateData[date] = ChronoStore(Device.ANDROID, date)
         if content["key_remote_jid"] is None:
+            print("Skipped message with data")
+
             continue  # Not sure
         if "sender_jid_row_id" in content:
             sender_jid_row_id = content["sender_jid_row_id"]
@@ -341,6 +349,14 @@ def messages(db, data, media_folder, timezone_offset, dateData):
             sender=content["sender_jid_row_id"],
             timezone_offset=timezone_offset
         )
+        message.status = content["status"]
+        if not sender_jid_row_id and content["key_from_me"]:
+            jajaid = content["key_remote_jid"]
+            fallback = jajaid.split('@')[0] if "@" in jajaid else None
+            if jajaid in data:
+                name = data[jajaid].name
+            recipient = name or fallback
+            message.recipient = recipient
         if isinstance(content["data"], bytes):
             message.data = ("The message is binary data and its base64 is "
                 '<a href="https://gchq.github.io/CyberChef/#recipe=From_Base64'
@@ -349,6 +365,7 @@ def messages(db, data, media_folder, timezone_offset, dateData):
             message.data += b64encode(content["data"]).decode("utf-8") + "</a>"
             message.safe = message.meta = True
             data[content["key_remote_jid"]].add_message(content["_id"], message)
+            dateData[date].add_message(content["_id"], message)
             i += 1
             content = c.fetchone()
             continue
@@ -454,7 +471,6 @@ def messages(db, data, media_folder, timezone_offset, dateData):
                     # if _jid in data:
                     #     name = data[_jid].name
                     #     fallback = _jid.split('@')[0] if "@" in _jid else None
-
                     if content["media_wa_type"] == 5:
                         msg = f"Location shared: {content['latitude'], content['longitude']}"
                         message.meta = True
@@ -469,18 +485,12 @@ def messages(db, data, media_folder, timezone_offset, dateData):
 
         data[content["key_remote_jid"]].add_message(content["_id"], message)
 
-            # data[content["key_remote_jid"]].messages[content["_id"]].data = msg
-            # dateData.messages[oId].data = msg
-            # dateData.messages[oId].sender = name # = msg
+        if message.sender is None:
+            if content["key_remote_jid"] in data:
+                name = data[content["key_remote_jid"]].name
+            message.sender = name
 
-            # print(chronoData.messages[content["_id"]].to_json())
-
-        # print(chronoData.messages[content["_id"]].to_json())
-
-        # if (i == 100):
-            # raise Exception('100')
-
-        # if data[content["key_remote_jid"]].messages[content["_id"]] is not None:
+        dateData[message.date].add_message(content["_id"], message)
 
         i += 1
         if i % 1000 == 0:
@@ -527,7 +537,8 @@ def media(db, data, media_folder, dateData):
                     mime_type,
                     media_key,
                     file_hash,
-                    thumbnail
+                    thumbnail,
+                    message.status
                 FROM message_media
                     INNER JOIN message
                         ON message_media.message_row_id = message._id
@@ -538,8 +549,10 @@ def media(db, data, media_folder, dateData):
                     LEFT JOIN media_hash_thumbnail
 						ON message_media.file_hash = media_hash_thumbnail.media_hash
                 WHERE jid.type <> 7
-                ORDER BY jid.raw_string ASC"""
+                ORDER BY message_row_id ASC"""
         )
+    # ORDER BY jid.raw_string ASC
+
     content = c.fetchone()
     mime = MimeTypes()
     if not os.path.isdir(f"{media_folder}/thumbnails"):
@@ -549,20 +562,30 @@ def media(db, data, media_folder, dateData):
     mm = 0
     x = 0
 
+    print(dict(content))
+
     while content is not None:
         file_path = f"{media_folder}/{content['file_path']}"
         message = data[content["key_remote_jid"]].messages[content["message_row_id"]]
+        chrono_message = dateData[message.date].messages[content["message_row_id"]]
         message.media = True
-        if os.path.isfile(file_path):
+        chrono_message.media = True
+        if os.path.isfile(file_path) or True:
             message.data = file_path
+            message.file_path = file_path
+            chrono_message.data = file_path
+            chrono_message.file_path = file_path
             if content["mime_type"] is None:
                 guess = mime.guess_type(file_path)[0]
                 if guess is not None:
                     message.mime = guess
+                    chrono_message.mime = guess
                 else:
                     message.mime = "application/octet-stream"
+                    chrono_message.mime = "application/octet-stream"
             else:
                 message.mime = content["mime_type"]
+                chrono_message.mime = content["mime_type"]
         else:
             if False: # Block execution
                 try:
@@ -570,47 +593,29 @@ def media(db, data, media_folder, dateData):
                     if r.status_code != 200:
                         raise RuntimeError()
                 except:
-                    message.data = "The media is missing"
+                    message.data = "The media is missing (" + file_path + ")"
                     message.mime = "media"
                     message.meta = True
                 else:
                     ...
-            message.data = "The media is missing"
+            if "Sent" in file_path:
+                mms += 1
+            else:
+                mm += 1
+
+            message.data = "The media is missing (" + file_path + ")"
             message.mime = "media"
             message.meta = True
+            chrono_message.data = "The media is missing (" + file_path + ")"
+            chrono_message.mime = "media"
+            chrono_message.meta = True
         if content["thumbnail"] is not None:
             thumb_path = f"{media_folder}/thumbnails/{b64decode(content['file_hash']).hex()}.png"
             if not os.path.isfile(thumb_path):
                 with open(thumb_path, "wb") as f:
                     f.write(content["thumbnail"])
             message.thumb = thumb_path
-
-            # if "https://mmg" in content[4]:
-            # try:
-            # r = requests.get(content[3])
-            # if r.status_code != 200:
-            # raise RuntimeError()
-            # except:
-            # data[content[0]]["messages"][content[1]]["data"] = "{The media is missing}"
-            # data[content[0]]["messages"][content[1]]["media"] = True
-            # data[content[0]]["messages"][content[1]]["mime"] = "media"
-            # else:
-            # print("Missing: "+file_path, dict(content))
-            # if file_path != 'None':
-            #     if content['mime_type'] is not None:
-            #         if content['mime_type'] == 'image/jpeg':
-            #             mm += 1
-            #             print(file_path)
-
-            #     if "Sent" in file_path:
-            #         mms += 1
-            #         print(file_path+',sent')
-                    
-            # data[content["key_remote_jid"]].messages[content["message_row_id"]].data = "The media is missing (" + file_path + ")"
-            # data[content["key_remote_jid"]].messages[content["message_row_id"]].mime = "media"
-            # data[content["key_remote_jid"]].messages[content["message_row_id"]].meta = True
-            # dateData.messages["message_row_id"] = data[content["key_remote_jid"]].messages[content["message_row_id"]]
-
+            chrono_message.thumb = thumb_path
         i += 1
         if i % 100 == 0:
             print(f"Processing media...({i}/{total_row_number})", end="\r")
@@ -620,8 +625,6 @@ def media(db, data, media_folder, dateData):
 
     print(f"Missing media (image/jpeg): {mm}")
     print(f"Missing media sent: {mms}")
-
-
 
 def split_dictionary(input_dict, chunk_size):
     res = []
@@ -676,18 +679,28 @@ def vcard(db, data, media_folder, dateData):
         if not os.path.isfile(file_path):
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(row["vcard"])
+        if row["key_remote_jid"] not in data:
+            print(dict(row))
+            print("Could not locate contact with id: " + row["key_remote_jid"])
+            data[row["key_remote_jid"]] = ChatStore(Device.ANDROID, row["media_name"])
+        if row["message_row_id"] not in data[row["key_remote_jid"]].messages:
+            continue
         message = data[row["key_remote_jid"]].messages[row["message_row_id"]]
-        # dateData.messages["message_row_id"] = data[row["key_remote_jid"]].messages[row["message_row_id"]]
+        chrono_message = dateData[message.date].messages[row["message_row_id"]]
 
         message.data = media_name + \
             "The vCard file cannot be displayed here, " \
             f"however it should be located at {file_path}"
         message.mime = "text/x-vcard"
         message.meta = True
+        chrono_message.data = message.data
+        chrono_message.mime = message.mime
+        chrono_message.meta = message.meta
+
         print(f"Processing vCards...({index + 1}/{total_row_number})", end="\r")
 
 
-def calls(db, data, timezone_offset):
+def calls(db, data, timezone_offset, dateData):
     c = db.cursor()
     c.execute("""SELECT count() FROM call_log""")
     total_row_number = c.fetchone()[0]
@@ -728,7 +741,7 @@ def calls(db, data, timezone_offset):
             remote_jid=content["raw_string"],
             cc=content,
             sender=name or fallback,
-            timezone_offset=timezone_offset,
+            timezone_offset=timezone_offset
         )
 
         call.sender = name or fallback
@@ -748,6 +761,20 @@ def calls(db, data, timezone_offset):
                 f"with {content['bytes_transferred']} bytes transferred."
             )
         chat.add_message(content["_id"], call)
+
+
+        print(f"Timestamp is:") 
+        timestamp = call.timestamp
+        timestamp = timestamp / 1000 if timestamp > 9999999999 else timestamp
+
+        date = datetime.fromtimestamp(timestamp, TimeZone(timezone_offset)).strftime("%Y-%m-%d")
+        print(f"Date is: " + date)
+
+        if date not in dateData:
+            dateData[date] = ChronoStore(Device.ANDROID, date)
+
+        dateData[date].add_message(content["_id"], call)
+
         content = c.fetchone()
     data["000000000000000"] = chat
 
@@ -853,7 +880,7 @@ def create_html_chrono(
 
     template = setup_template(template, no_avatar)
 
-    total_row_number = len(dateData.messages)
+    total_row_number = len(dateData)
     print(f"\nGenerating chats...(0/{total_row_number})", end="\r")
 
     if not os.path.isdir(output_folder):
@@ -865,8 +892,10 @@ def create_html_chrono(
     # first = split[0]
     # print(split)
 
-    for current, date in enumerate(dateData.dates):
+    for current, date in enumerate(dateData):
+    
         print(date)
+        chat = dateData[date]
 
         safe_file_name = f"output-{date}"
 
@@ -876,9 +905,9 @@ def create_html_chrono(
         rendering(
             output_file_name,
             template,
-            name,
+            date,
             chat.get_messages(),
-            contact,
+            date,
             w3css,
             False,
             chat
@@ -888,6 +917,7 @@ def create_html_chrono(
 
     print(f"Generating chats...({total_row_number}/{total_row_number})", end="\r")
 
+'''
 if __name__ == "__main__":
     from optparse import OptionParser
     parser = OptionParser()
@@ -946,7 +976,7 @@ if __name__ == "__main__":
 
     print("Everything is done!")
 
-'''
+
         # a chat_subject implies that it is a group chat message
         if content["chat_subject"] is not None:
             _jid = content["group_sender_jid"]
@@ -975,6 +1005,7 @@ if __name__ == "__main__":
             remote_jid=content["key_remote_jid"],
             cc=content,
             sender=name,
+            timezone_offset=timezone_offset
         )
 
         jss = oMsg.to_json()
