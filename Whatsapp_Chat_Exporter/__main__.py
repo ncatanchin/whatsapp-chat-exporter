@@ -395,7 +395,7 @@ def main():
                         print("\nCannot remove original WhatsApp directory. "
                             "Perhaps the directory is opened?", end="\n")
         print("\nAwait keypress", end="\n")
-        a = keyboard.read_key()
+        a = input()
     elif args.exported:
         extract_exported.messages(args.exported, data, args.assume_first_as_me)
         if not args.no_html:

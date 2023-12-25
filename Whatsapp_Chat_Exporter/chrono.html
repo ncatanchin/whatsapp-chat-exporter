@@ -240,6 +240,12 @@
 									<audio controls="controls" autobuffer="autobuffer">
 										<source src="{{ msg.data }}" />
 									</audio>
+                  {% if msg.file_path_txt %}
+                    {% include msg.file_path_txt %}
+                    {% if msg.file_path_txt_en %}
+                      {% include msg.file_path_txt_en %}
+                    {% endif %}
+                  {% endif %}
 									{% elif "video/" in msg.mime %}
 									<video controls="controls" autobuffer="autobuffer">
 										<source src="{{ msg.data }}" />
@@ -261,7 +267,8 @@
 						</div>
 					</div>
 					{% endif %}
-          <strong style="font-size: red; font-size:16px;">a: {{ msg.id }}</strong>
+          <strong style="red; font-size:10px;">a: {{ msg.id }}</strong>
+          {% if msg.media %}<strong><a href="./{{ msg.data }}">{{ msg.data }}</a></strong>{% endif %}
 				</div>
 			{% endfor %}
 			</div>

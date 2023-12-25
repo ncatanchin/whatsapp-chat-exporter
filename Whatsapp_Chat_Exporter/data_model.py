@@ -117,6 +117,9 @@ class Message():
     def __init__(self, from_me: Union[bool,int], timestamp: int, time: Union[int,float,str], key_id: int, remote_jid: str, cc, sender: str, timezone_offset: int = 0):
         self.from_me = bool(from_me)
         self.file_path = None
+        self.file_path_txt = None
+        self.file_path_txt_en = None
+
         self.timestamp = timestamp / 1000 if timestamp > 9999999999 else timestamp
         if isinstance(time, int) or isinstance(time, float):
             self.time = datetime.fromtimestamp(self.timestamp, TimeZone(timezone_offset)).strftime("%H:%M")
@@ -166,7 +169,9 @@ class Message():
             'caption'     : self.caption,
             'thumb'       : self.thumb,
             'sticker'     : self.sticker,
-            'file_path'   : self.file_path
+            'file_path'   : self.file_path,
+            'file_path_txt' : self.file_path_txt,
+            'file_path_txt_en' : self.file_path_txt_en
             # 'remote_jid'  : self.remote_jid,
             # "subject"     : self.subject,
             # "sender"      : self.sender,

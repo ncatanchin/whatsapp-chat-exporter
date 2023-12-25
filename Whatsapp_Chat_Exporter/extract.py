@@ -4,6 +4,8 @@ import sqlite3
 import os
 import io
 import hmac
+import shutil
+import subprocess
 from pathlib import Path
 from mimetypes import MimeTypes
 from hashlib import sha256
@@ -317,9 +319,9 @@ def messages(db, data, media_folder, timezone_offset, dateData):
     # ['key_remote_jid', '_id', 'key_from_me', 'timestamp', 'data', 'status', 'edit_version', 'thumb_image', 'remote_resource', 'media_wa_type', 'latitude', 'longitude', 'quoted', 'key_id', 'quoted_data', 'message_type', 'group_sender_jid', 'chat_subject']
 
     while content is not None:
-        print("Lets walk through messages. Here is the first one:")
-        pprint(dict(content))
-        choice = input()
+        # print("Lets walk through messages. Here is the first one:")
+        # pprint(dict(content))
+        # choice = input()
 
         if content["key_remote_jid"] not in data:
             data[content["key_remote_jid"]] = ChatStore(Device.ANDROID, content["chat_subject"])
@@ -333,6 +335,8 @@ def messages(db, data, media_folder, timezone_offset, dateData):
             dateData[date] = ChronoStore(Device.ANDROID, date)
         if content["key_remote_jid"] is None:
             print("Skipped message with data")
+            pprint(dict(content))
+            choice = input()
 
             continue  # Not sure
         if "sender_jid_row_id" in content:
@@ -569,12 +573,82 @@ def media(db, data, media_folder, dateData):
         message = data[content["key_remote_jid"]].messages[content["message_row_id"]]
         chrono_message = dateData[message.date].messages[content["message_row_id"]]
         message.media = True
+        media_missing = False
         chrono_message.media = True
         if os.path.isfile(file_path) or True:
+            if not os.path.isfile(file_path):
+                media_missing = True
+                if "Sent" in file_path:
+                    mms += 1
+                    print(f"Media Sent - {file_path} is missing")
+                    if "Animated" in file_path:
+                        # up to Animated
+                        dirname = os.path.dirname(file_path)
+                        # up to Media
+                        mediap = os.path.dirname(dirname)
+
+                        video_path = mediap + "/WhatsApp Video/Sent/" + basename
+                        if os.path.isfile(video_path):
+                            print(f"Media animataed {basename} present in Videos but missing where expected - ID {message.id}")
+                            print(f"Moved to {file_path} on input")
+                            a = input()
+                            shutil.move(video_path, file_path)
+                else:
+                    print(f"Media - {file_path} is missing")
+                    mm += 1
+                    basename = os.path.basename(file_path)
+                    dirname = os.path.dirname(file_path)
+                    sent_path = dirname + "/Sent/" + basename
+                    if os.path.isfile(sent_path):
+                        print(f"Media {basename} present in Sent but missing where expected - ID {message.id}")
+                        shutil.move(sent_path, dirname)
+                        print(f"Moved to {dirname}")
+                        a = input()
+                    if "Animated" in file_path:
+                        video_path = os.path.dirname(dirname) + "/WhatsApp Video/" + basename
+                        if os.path.isfile(video_path):
+                            print(f"Media animataed {basename} present in Videos but missing where expected - ID {message.id}")
+                            print(f"Moved to {dirname} on input")
+                            a = input()
+                            shutil.move(video_path, dirname)
+
+            # a = input()
+            # check if image exists in Sent when it shouldn't
+            if "Sent" not in file_path:
+                basename = os.path.basename(file_path)
+                dirname = os.path.dirname(file_path)
+                sent_path = dirname + "/Sent/" + basename
+                if os.path.isfile(sent_path):
+                    print(f"Media {basename} present in Sent when it should not be - ID {message.id}")
+                    if media_missing:
+                        print(f"Moving to {dirname} on input")
+                        a = input()
+                        shutil.move(sent_path, dirname)
+                    else:
+                        problem_path = os.path.dirname(sent_path) + "/Problem/"
+                        shutil.move(sent_path, problem_path)
+                        print(f"Moved to {problem_path}")
+                        # a = input()
+
+            if not os.path.isfile(file_path):
+                if file_path is not None:
+                    bname = os.path.basename(file_path)
+                    if bname is not None and bname != 'None':
+                        fname = os.path.splitext(bname)[0]
+                        print(f"Media {file_path} is still missing, attempting lolcate {fname}")
+                        print(f"lolcate '{bname}'")
+                        print(f"cp thepathfound {file_path}")
+
             message.data = file_path
             message.file_path = file_path
             chrono_message.data = file_path
             chrono_message.file_path = file_path
+            if (file_path.endswith('opus')):
+                if os.path.isfile(file_path + '.txt'):
+                    chrono_message.file_path_txt = file_path + '.txt'
+                    if os.path.isfile(chrono_message.file_path_txt + '.en'):
+                        chrono_message.file_path_txt_en =  chrono_message.file_path_txt + '.en'
+
             if content["mime_type"] is None:
                 guess = mime.guess_type(file_path)[0]
                 if guess is not None:
@@ -625,6 +699,7 @@ def media(db, data, media_folder, dateData):
 
     print(f"Missing media (image/jpeg): {mm}")
     print(f"Missing media sent: {mms}")
+    a = input()
 
 def split_dictionary(input_dict, chunk_size):
     res = []
