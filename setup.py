@@ -57,7 +57,8 @@ setuptools.setup(
         'crypt15':  ["pycryptodome", "javaobj-py3"],
         'all': ["pycryptodome", "javaobj-py3"],
         'everything': ["pycryptodome", "javaobj-py3"],
-        'backup': ["pycryptodome", "javaobj-py3"]
+        'backup': ["pycryptodome", "javaobj-py3"],
+        'translation': ["pycld2"]
     },
     entry_points={
         "console_scripts": [
