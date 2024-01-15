@@ -1,19 +1,26 @@
 #!/bin/bash
 
-BASE_DIR=/home/lithium/newfo
-MDB=msgstore.db
-KEY=whatsapp.cryptkey
-WA=wa.db
-STAMP=`date +%Y-%m-%d_%H-%M-%S`
-EXPORT_DIR=/home/lithium/export/$STAMP
+source /morningstar/python/env/bin/activate
 
-mkdir $STAMP
+# BASE_DIR=/home/lithium/newfo
+# MDB=msgstore.db
+# KEY=whatsapp.cryptkey
+# WA=wa.db
+STAMP=`date +%Y-%m-%d_%H-%M-%S`
+# EXPORT_DIR=/home/lithium/export/$STAMP
+
+# mkdir $STAMP
 
 python __main__.py \
     -a \
-    -m ./WhatsApp \
-    -o /home/lithium/export/$STAMP \
-    -b $BASE_DIR/$MDB \
-    -w $BASE_DIR/$WA \
-    --time-offset=10 \
+    --time-offset=11 \
+    --size=0 \
     $@
+#    |& tee logfile-$STAMP.log
+
+#    -m ./WhatsApp \
+#    -o /home/lithium/export/$STAMP \
+#    -b $BASE_DIR/$MDB \
+#    -w $BASE_DIR/$WA \
+#    --time-offset=10 \
+#    $@
