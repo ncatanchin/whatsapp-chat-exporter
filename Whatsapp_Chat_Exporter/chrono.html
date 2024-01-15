@@ -1,284 +1,271 @@
 <!DOCTYPE html>
 <html>
-	<head>
-		<title>Whatsapp - {{ name }}</title>
-		<meta charset="UTF-8">
-		<link rel="stylesheet" href="{{w3css}}">
-		<style>
-		html, body {
-			font-size: 12px;
-			scroll-behavior: smooth;
-		}
-		header {
-			position: fixed;
-			z-index: 20;
-			border-bottom: 2px solid #e3e6e7;
-			font-size: 2em;
-			font-weight: bolder;
-			background-color: white;
-			padding: 20px 0 20px 0;
-		}
-		footer {
-			border-top: 2px solid #e3e6e7;
-			font-size: 2em;
-			padding: 20px 0 20px 0;
-		}
-		article {
-			width:500px;
-			margin:100px auto;
-			z-index:10;
-			font-size: 15px;
-			word-wrap: break-word;
-		}
-		img, video {
-			max-width:100%;
-		}
-		a.anchor {
-			display: block;
-			position: relative;
-			top: -100px;
-			visibility: hidden;
-		}
-		div.reply{
-			font-size: 13px;
-			text-decoration: none;
-		}
-		div:target::before {
-			content: '';
-			display: block;
-			height: 115px;
-			margin-top: -115px;
-			visibility: hidden;
-		}
-		div:target {
-			border-style: solid;
-			border-width: 2px;
-			animation: border-blink 0.5s steps(1) 5;
-			border-color: rgba(0,0,0,0)
-		}
-		table {
-			width: 100%;
-		}
-		@keyframes border-blink {
-			0% {
-				border-color: #2196F3;
-			}
-			50% {
-				border-color: rgba(0,0,0,0);
-			}
-		}
-		.avatar {
-			border-radius:50%;
-			overflow:hidden;
-			max-width: 64px;
-			max-height: 64px;
-		}
-		.name {
-			color: #3892da;
-		}
-		.pad-left-10 {
-			padding-left: 10px;
-		}
-		.pad-right-10 {
-			padding-right: 10px;
-		}
-		.reply_link {
-			color: #168acc;
-		}
-		.blue {
-			color: #70777a;
-		}
-		.sticker {
-			max-width: 100px !important;
-			max-height: 100px !important;
-		}
-		</style>
-	</head>
-	<body>
-		<header class="w3-center w3-top">Chronological Chat</header>
-		<article class="w3-container">
-			<div class="table" style="width:100%">
-			{% set last = {'last': 946688461.001} %}
-			{% for msg in msgs-%}
-				<div class="w3-row w3-padding-small w3-margin-bottom" id="{{ msg.key_id }}" title="{{ msg.json|safe }}">
-          <!--
+  <head>
+    <title>Whatsapp - {{ name }}</title>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="{{w3css}}">
+    <style>
+    html, body {
+      font-size: 12px;
+      scroll-behavior: smooth;
+    }
+    </style>
+  </head>
+  <body>
+    <header class="w3-center w3-top">Chronological Chat</header>
+    <article class="w3-container">
+      <div class="table">
+      {% set last = {'last': 946688461.001} %}
+      {% set name = {'last_name': '', 'this_name': '', 'bg': '#eeeeee', 'change': false} %}
+
+      {% for msg in msgs -%}
+        {% set bg = name.bg %}
+        {% if msg.from_me == true %}
+          {% if name.update({'this_name': msg.recipient}) %}{% endif %}
+        {% else %}
+          {% if msg.sender is not none %}
+          {% if name.update({'this_name': msg.sender}) %}{% endif %}
+          {% else %}
+          {% if name.update({'this_name': msg.name}) %}{% endif %}
+          {% endif %}
+        {% endif %}
+        {% if name.last_name != name.this_name %}
+            {% if bg == '#eeeeee' %}
+              {% set bg = '#ffffff' %}
+            {% elif bg == '#ffffff' %}
+              {% set bg = 'lightblue' %}
+            {% elif bg == 'lightblue' %}
+              {% set bg = 'lightgreen' %}
+            {% elif bg == 'lightgreen' %}
+              {% set bg = '#a1dcf8' %}
+            {% elif bg == '#a1dcf8' %}
+              {% set bg = '#eeeeee' %}
+            {%endif %}
+            {% if name.update({'bg': bg, 'change': true }) %}{% endif %}
+        {% endif %}
+        <div style="background-color: {{ name.bg }}" class="w3-row w3-padding-small w3-margin-bottom" id="{{ msg.key_id }}" title="{{ msg.json|safe }}">
+          {% if debug %}
           <div style="font-family: monospace,monospace">
           {{ msg.json|safe }}
           </div>
-          -->
-					<a class="anchor" id="{{ msg.key_id }}"></a>
-					{% if determine_day(last.last, msg.timestamp) is not none  %}
-					<div class="w3-center w3-padding-16 blue">{{ determine_day(last.last, msg.timestamp) }}</div>
-					{% if last.update({'last': msg.timestamp}) %}{% endif %}
-					{% endif %}
-					{{ msg.chat_subject }}
-					{% if msg.from_me == true %}
-					<div class="w3-row">
-						<div class="w3-left blue">{{ msg.date }} {{ msg.time }}</div>
-						<div class="name w3-right-align pad-left-10">You --> <span style="font-size: 9px;">{{ msg.recipient }}</span></div>
-					</div>
-					<div class="w3-row">
-						{% if not no_avatar and my_avatar is not none %}
-						<div class="w3-col m10 l10">
-						{% else %}
-						<div class="w3-col m12 l12">
-						{% endif %}
-							<div class="w3-right-align">
-							{% if msg.reply is not none %}
-								<div class="reply">
-									<span class="blue">Replying to </span>
-									<a href="#{{msg.reply}}" class="reply_link">
-										{% if msg.quoted_data is not none %}
-											"{{msg.quoted_data}}"
-										{% else %}
-											this message
-										{% endif %}
-									</a>
-								</div>
-							{% endif %}
-							{% if msg.meta == true or msg.media == false and msg.data is none %}
-								<div class="w3-panel w3-border-blue w3-pale-blue w3-rightbar w3-leftbar w3-threequarter w3-center">
-									{% if msg.safe %}
-									<p>{{ msg.data | safe or 'Not supported WhatsApp internal message' }}</p>
-									{% else %}
-									<p>{{ msg.data or 'Not supported WhatsApp internal message' }}</p>
-									{% endif %}
-								</div>
-							{% else %}
-								{% if msg.media == false %}
-								{{ msg.data | sanitize_except() | urlize(none, true, '_blank') }}
-								{% else %}
-									{% if "image/" in msg.mime %}
-									<a href="{{ msg.data }}">
-										<img src="{{ msg.thumb if msg.thumb is not none else msg.data }}" {{ 'class="sticker"' | safe if msg.sticker }} />
-									</a>
-									{% elif "audio/" in msg.mime %}
-									<audio controls="controls" autobuffer="autobuffer">
-										<source src="{{ msg.data }}" />
-									</audio>
-									{% elif "video/" in msg.mime %}
-									<video controls="controls" autobuffer="autobuffer">
-										<source src="{{ msg.data }}" />
-									</video>
-									{% elif "/" in msg.mime %}
-										<div class="w3-panel w3-border-blue w3-pale-blue w3-rightbar w3-leftbar w3-threequarter w3-center">
-											<p>The file cannot be displayed here, however it should be located at <a href="./{{ msg.data }}">here</a></p>
-										</div>
-									{% else %}
-										{% filter escape %}{{ msg.data }}{% endfilter %}
-									{% endif %}
-									{% if msg.caption is not none %}
-									<br>
-									{{ msg.caption | urlize(none, true, '_blank') }}
-									{% endif %}
-								{% endif %}
-								{% endif %}
-							</div>
-						</div>
-						{% if not no_avatar and my_avatar is not none %}
-						<div class="w3-col m2 l2 pad-left-10">
-							<a href="{{ my_avatar }}">
-								<img src="{{ my_avatar }}" onerror="this.style.display='none'" class="avatar">
-							</a>
-						</div>
-						{% endif %}
-					</div>
-					{% else %}
-					<div class="w3-row">
-						<div class="w3-left pad-right-10 name">
-							{% if msg.sender is not none %}
-							{{ msg.sender }}
-							{% else %}
-							{{ name }}
-							{% endif %}
-						</div>
-						<div class="w3-right-align blue">{{ msg.time }}</div>
-					</div>
-					<div class="w3-row">
-						{% if not no_avatar %}
-						<div class="w3-col m2 l2">
-								{% if their_avatar is not none %}
-								<a href="{{ their_avatar }}"><img src="{{ their_avatar_thumb or '' }}" onerror="this.style.display='none'" class="avatar"></a>
-								{% else %}
-								<img src="{{ their_avatar_thumb or '' }}" onerror="this.style.display='none'" class="avatar">
-								{% endif %}
-						</div>
-						<div class="w3-col m10 l10">
-						{% else %}
-						<div class="w3-col m12 l12">
-						{% endif %}
-							<div class="w3-left-align">
-							{% if msg.reply is not none %}
-								<div class="reply">
-									<span class="blue">Replying to </span>
-									<a href="#{{msg.reply}}" class="reply_link">
-										{% if msg.quoted_data is not none %}
-											"{{msg.quoted_data}}"
-										{% else %}
-											this message
-										{% endif %}
-									</a>
-								</div>
-							{% endif %}
-							{% if msg.meta == true or msg.media == false and msg.data is none %}
-								<div class="w3-panel w3-border-blue w3-pale-blue w3-rightbar w3-leftbar w3-threequarter w3-center">
-									{% if msg.safe %}
-									<p>{{ msg.data | safe or 'Not supported WhatsApp internal message' }}</p>
-									{% else %}
-									<p>{{ msg.data or 'Not supported WhatsApp internal message' }}</p>
-									{% endif %}
-								</div>
-							{% else %}
-								{% if msg.media == false %}
-								{{ msg.data | sanitize_except() | urlize(none, true, '_blank') }}
-								{% else %}
-									{% if "image/" in msg.mime %}
-									<a href="{{ msg.data }}">
-										<img src="{{ msg.thumb if msg.thumb is not none else msg.data }}" {{ 'class="sticker"' | safe if msg.sticker }} />
-									</a>
-									{% elif "audio/" in msg.mime %}
-									<audio controls="controls" autobuffer="autobuffer">
-										<source src="{{ msg.data }}" />
-									</audio>
-                  {% if msg.file_path_txt %}
-                    {% include msg.file_path_txt %}
-                    {% if msg.file_path_txt_en %}
-                      {% include msg.file_path_txt_en %}
+          {% endif %}
+          <a class="anchor" id="{{ msg.key_id }}"></a>
+          {% if determine_day(last.last, msg.timestamp) is not none  %}
+          <div class="w3-center w3-padding-16 blue">{{ determine_day(last.last, msg.timestamp) }}</div>
+          {% if last.update({'last': msg.timestamp}) %}{% endif %}
+          {% endif %}
+          {{ msg.chat_subject }}
+          {% if msg.from_me == true %}
+          <div class="w3-row" title="last name: {{ name.last_name }} this name: {{ name.this_name }} bg: {{ name.bg }}">
+            <div class="w3-left blue">{{ msg.time }}</div>
+            <div class="name w3-right-align pad-left-10">You</div>
+            {% if name.change %}
+            <div class="name">
+              <a href="{{ msg.output_file_name[0] }}.html">{{ name.this_name }}</a>
+            </div>
+            {% endif %}
+          </div>
+          <div class="w3-row">
+            {% if not no_avatar and my_avatar is not none %}
+            <div class="w3-col m10 l10">
+            {% else %}
+            <div class="w3-col m12 l12">
+            {% endif %}
+              <div class="w3-right-align">
+              {% if msg.reply is not none %}
+                <div class="reply">
+                  <span class="blue">Replying to </span>
+                  <a href="#{{msg.reply}}" class="reply_link">
+                    {% if msg.quoted_data is not none %}
+                      "{{msg.quoted_data}}"
+                    {% else %}
+                      this message
                     {% endif %}
+                  </a>
+                </div>
+              {% endif %}
+              {% if msg.meta == true or msg.media == false and msg.data is none %}
+                <div class="w3-panel w3-border-blue w3-pale-blue w3-rightbar w3-leftbar w3-threequarter w3-center">
+                  {% if msg.safe %}
+                  <p>{{ msg.data | safe or 'Not supported WhatsApp internal message' }}</p>
+                  {% else %}
+                  <p>{{ msg.data or 'Not supported WhatsApp internal message' }}</p>
                   {% endif %}
-									{% elif "video/" in msg.mime %}
-									<video controls="controls" autobuffer="autobuffer">
-										<source src="{{ msg.data }}" />
-									</video>
-									{% elif "/" in msg.mime %}
-										<div class="w3-panel w3-border-blue w3-pale-blue w3-rightbar w3-leftbar w3-threequarter w3-center">
-											<p>The file cannot be displayed here, however it should be located at <a href="./{{ msg.data }}">here</a></p>
-										</div>
-									{% else %}
-										{% filter escape %}{{ msg.data }}{% endfilter %}
-									{% endif %}
-									{% if msg.caption is not none %}
-									<br>
-									{{ msg.caption | urlize(none, true, '_blank') }}
-									{% endif %}
-								{% endif %}
-							{% endif %}
-							</div>
-						</div>
-					</div>
-					{% endif %}
-          <strong style="red; font-size:10px;">a: {{ msg.id }}</strong>
-          {% if msg.media %}<strong><a href="./{{ msg.data }}">{{ msg.data }}</a></strong>{% endif %}
-				</div>
-			{% endfor %}
-			</div>
-		</article>
-		<footer class="w3-center">
-			{% if next %}
-			<a href="./{{ next }}">Next</a>
-			{% else %}
-			End of history
-			{% endif %}
-		</footer>
-	</body>
+                </div>
+              {% else %}
+                {% if msg.media == false %}
+                {{ msg.data | sanitize_except() | urlize(none, true, '_blank') }}
+                {% else %}
+                  {% if "image/" in msg.mime %}
+                  <a href="{{ msg.data }}">
+                    <img src="{{ msg.thumb if msg.thumb is not none else msg.data }}" {{ 'class="sticker"' | safe if msg.sticker }} />
+                  </a>
+                  {% elif "audio/" in msg.mime %}
+                  <audio controls="controls" autobuffer="autobuffer">
+                    <source src="{{ msg.data }}" />
+                  </audio>
+                  {% elif "video/" in msg.mime %}
+                  <video controls="controls" autobuffer="autobuffer">
+                    <source src="{{ msg.data }}" />
+                  </video>
+                  {% elif "/" in msg.mime %}
+                    <div class="w3-panel w3-border-blue w3-pale-blue w3-rightbar w3-leftbar w3-threequarter w3-center">
+                      <p>The file cannot be displayed here, however it should be located at <a href="./{{ msg.data }}">here</a></p>
+                    </div>
+                  {% else %}
+                    {% filter escape %}{{ msg.data }}{% endfilter %}
+                  {% endif %}
+                  {% if msg.caption is not none %}
+                  <br>
+                  {{ msg.caption | urlize(none, true, '_blank') }}
+                  {% endif %}
+                {% endif %}
+                {% endif %}
+              </div>
+            </div>
+            {% if not no_avatar and my_avatar is not none %}
+            <div class="w3-col m2 l2 pad-left-10">
+              <a href="{{ my_avatar }}">
+                <img src="{{ my_avatar }}" onerror="this.style.display='none'" class="avatar">
+              </a>
+            </div>
+            {% endif %}
+          </div>
+          {% else %}
+          <div class="w3-row">
+            <div class="w3-left pad-right-10 name">
+              <a href="{{ msg.output_file_name }}" title="View {{ msg.sender }}'s conversation">{{ name.this_name }}</a>
+            </div>
+            <div class="w3-right-align blue">{{ msg.time }}</div>
+          </div>
+          <div class="w3-row">
+            {% if not no_avatar %}
+            <div class="w3-col m2 l2">
+                {% if their_avatar is not none %}
+                <a href="{{ their_avatar }}"><img src="{{ their_avatar_thumb or '' }}" onerror="this.style.display='none'" class="avatar"></a>
+                {% else %}
+                <img src="{{ their_avatar_thumb or '' }}" onerror="this.style.display='none'" class="avatar">
+                {% endif %}
+            </div>
+            <div class="w3-col m10 l10">
+            {% else %}
+            <div class="w3-col m12 l12">
+            {% endif %}
+              <div class="w3-left-align">
+              {% if msg.reply is not none %}
+                <div class="reply">
+                  <span class="blue">Replying to </span>
+                  <a href="#{{msg.reply}}" class="reply_link">
+                    {% if msg.quoted_data is not none %}
+                      "{{msg.quoted_data}}"
+                    {% else %}
+                      this message
+                    {% endif %}
+                  </a>
+                </div>
+              {% endif %}
+              {% if msg.meta == true or msg.media == false and msg.data is none %}
+                <div class="w3-panel w3-border-blue w3-pale-blue w3-rightbar w3-leftbar w3-threequarter w3-center">
+                  {% if msg.safe %}
+                  <p>{{ msg.data | safe or 'Not supported WhatsApp internal message' }}</p>
+                  {% else %}
+                  <p>{{ msg.data or 'Not supported WhatsApp internal message' }}</p>
+                  {% endif %}
+                </div>
+              {% else %}
+                {% if msg.media == false %}
+                {{ msg.data | sanitize_except() | urlize(none, true, '_blank') }}
+                {% else %}
+                  {% if "image/" in msg.mime %}
+                  <a href="{{ msg.data }}">
+                    <img src="{{ msg.thumb if msg.thumb is not none else msg.data }}" {{ 'class="sticker"' | safe if msg.sticker }} />
+                  </a>
+                  {% elif "audio/" in msg.mime %}
+                  <audio controls="controls" autobuffer="autobuffer">
+                    <source src="{{ msg.data }}" />
+                  </audio>
+                  {% if msg.file_path_txt %}
+                  <div>
+                    {% include msg.file_path_txt %}<br />
+                    {% if msg.file_path_txt_en %}
+                      {% include msg.file_path_txt_en %}<br />
+                    {% endif %}
+                  </div>
+                  {% endif %}
+                  {% elif "video/" in msg.mime %}
+                  <video controls="controls" autobuffer="autobuffer">
+                    <source src="{{ msg.data }}" />
+                  </video>
+                  {% elif "/" in msg.mime %}
+                    <div class="w3-panel w3-border-blue w3-pale-blue w3-rightbar w3-leftbar w3-threequarter w3-center">
+                      <p>The file cannot be displayed here, however it should be located at <a href="./{{ msg.data }}">here</a></p>
+                    </div>
+                  {% else %}
+                    {% filter escape %}{{ msg.data }}{% endfilter %}
+                  {% endif %}
+
+                  {% if msg.file_path_txt %}
+                  <div>
+                    {% include msg.file_path_txt %}<br />
+                    {% if msg.file_path_txt_en %}
+                      {% include msg.file_path_txt_en %}<br />
+                    {% endif %}
+                  </div>
+                  {% endif %}
+
+                  {% if msg.caption is not none %}
+                  <br>
+                  {{ msg.caption | urlize(none, true, '_blank') }}
+                  {% endif %}
+                {% endif %}
+              {% endif %}
+              </div>
+            </div>
+          </div>
+          {% endif %}
+          <span style="color: #666; font-size:10px;">message-id: {{ msg.id }}</span>
+          {% if msg.media %}
+          <span style="float: right;">
+            <a href="./{{ msg.data }}" title="{{ msg.data }}" target="_blank" >{{ msg.data | replace("WhatsApp/Media/", "...") }}</a>
+          </span>
+          {% endif %}
+          {% if msg.file_path_txt %}
+          <div>
+            {% include msg.file_path_txt %}<br />
+            {% if msg.file_path_txt_en %}
+TRIEDFSD FH
+              {% include msg.file_path_txt_en %}<br />
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+        {% if (name.update({'last_name': name.this_name })) %}{% endif %}
+      {% endfor %}
+      </div>
+    </article>
+    <footer class="w3-center">
+      {% if prev %}
+      <a href="./{{ prev }}">Prev</a>
+      {% endif %}
+      {% if next %}
+      <a href="./{{ next }}">Next</a>
+      {% else %}
+      End of history
+      {% endif %}
+    </footer>
+    <section>
+
+<div class="container" id="main">
+  <div class="jumbotron">
+    <h1 class="text-center"><a id="left" href="#"><i class="fa fa-chevron-left"> </i></a><span>&nbsp;</span><span id="month"> </span><span>&nbsp;</span><span id="year"> </span><span>&nbsp;</span><a id="right" href="#"><i class="fa fa-chevron-right"> </i></a></h1>
+  </div>
+  <div class="row">
+    <div class="col-sm-10 col-sm-offset-1">
+      <table class="table"></table>
+    </div>
+  </div>
+</div><span id="about"><a href="http://odran037.github.io" target="_blank"><i class="fa fa-question-circle"> </i></a></span>
+</section>
+  </body>
 </html>
