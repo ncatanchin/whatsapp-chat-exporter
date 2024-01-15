@@ -60,11 +60,11 @@
           <div class="w3-row" title="last name: {{ name.last_name }} this name: {{ name.this_name }} bg: {{ name.bg }}">
             <div class="w3-left blue">{{ msg.time }}</div>
             <div class="name w3-right-align pad-left-10">You</div>
-            {% if name.change %}
+            {# if name.change #}
             <div class="name">
-              <a href="{{ msg.output_file_name[0] }}.html">{{ name.this_name }}</a>
+              <a href="{{ msg.output_file_name[0] }}.html" title="View {{ msg.sender }}'s conversation">{{ name.this_name }}</a>
             </div>
-            {% endif %}
+            {# endif #}
           </div>
           <div class="w3-row">
             {% if not no_avatar and my_avatar is not none %}
@@ -135,7 +135,7 @@
           {% else %}
           <div class="w3-row">
             <div class="w3-left pad-right-10 name">
-              <a href="{{ msg.output_file_name }}" title="View {{ msg.sender }}'s conversation">{{ name.this_name }}</a>
+              <a href="{{ msg.output_file_name[0] }}.html" title="View {{ msg.sender }}'s conversation">{{ name.this_name }}</a>
             </div>
             <div class="w3-right-align blue">{{ msg.time }}</div>
           </div>

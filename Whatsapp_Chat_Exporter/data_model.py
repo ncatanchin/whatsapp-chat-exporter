@@ -57,7 +57,7 @@ class ChatStore():
         }
 
     def get_last_message(self):
-        return tuple(self.messages.values())[-1]
+        return tuple(self.get_messages())[-1]
 
     def get_messages(self):
         return self.messages.values()
@@ -114,11 +114,12 @@ class ChronoStore():
         return self.messages.values()
 
 class Message():
-    def __init__(self, from_me: Union[bool,int], timestamp: int, time: Union[int,float,str], key_id: int, remote_jid: str, cc, sender: str, timezone_offset: int = 0):
+    def __init__(self, id: int, from_me: Union[bool,int], timestamp: int, time: Union[int,float,str], key_id: int, remote_jid: str, cc, sender: str, timezone_offset: int = 0):
         self.from_me = bool(from_me)
         self.file_path = None
         self.file_path_txt = None
         self.file_path_txt_en = None
+        self.id = id
 
         self.timestamp = timestamp / 1000 if timestamp > 9999999999 else timestamp
         if isinstance(time, int) or isinstance(time, float):
@@ -137,6 +138,7 @@ class Message():
         self.sender = None
         self.safe = False
         self.mime = None
+        self.output_file_name = ''
 
         # self.cc = cc
         # self.remote_jid = remote_jid
@@ -171,7 +173,8 @@ class Message():
             'sticker'     : self.sticker,
             'file_path'   : self.file_path,
             'file_path_txt' : self.file_path_txt,
-            'file_path_txt_en' : self.file_path_txt_en
+            'file_path_txt_en' : self.file_path_txt_en,
+            'output_file_name': self.output_file_name
             # 'remote_jid'  : self.remote_jid,
             # "subject"     : self.subject,
             # "sender"      : self.sender,

@@ -6,6 +6,7 @@ import io
 import hmac
 import shutil
 import subprocess
+import pycld2 as cld2
 from pathlib import Path
 from mimetypes import MimeTypes
 from hashlib import sha256
@@ -174,7 +175,7 @@ def contacts(db, data):
             data[row["jid"]].status = row["status"]
 
         nn = row["display_name"] if row["display_name"] is not None else 'none'
-        print(row["jid"] + " " + nn)
+        # print(row["jid"] + " " + nn)
 
         row = c.fetchone()
 
@@ -222,8 +223,8 @@ def messages(db, data, media_folder, timezone_offset, dateData):
                     FROM messages
                         LEFT JOIN messages_quotes
                             ON messages.quoted_row_id = messages_quotes._id
-						LEFT JOIN missed_call_logs
-							ON messages._id = missed_call_logs.message_row_id
+                        LEFT JOIN missed_call_logs
+                            ON messages._id = missed_call_logs.message_row_id
                         INNER JOIN jid jid_global
                             ON messages.key_remote_jid = jid_global.raw_string
                         LEFT JOIN chat
@@ -262,7 +263,7 @@ def messages(db, data, media_folder, timezone_offset, dateData):
                         message.message_type as media_wa_type,
                         jid_group.raw_string as group_sender_jid,
                         chat.subject as chat_subject,
-						missed_call_logs.video_call,
+                        missed_call_logs.video_call,
                         message.sender_jid_row_id,
                         message_system.action_type,
                         message_system_group.is_me_joined,
@@ -290,8 +291,8 @@ def messages(db, data, media_folder, timezone_offset, dateData):
                         ON jid_global._id = chat.jid_row_id
                     LEFT JOIN jid jid_group
                         ON jid_group._id = message.sender_jid_row_id
-					LEFT JOIN missed_call_logs
-						ON message._id = missed_call_logs.message_row_id
+                    LEFT JOIN missed_call_logs
+                        ON message._id = missed_call_logs.message_row_id
                     LEFT JOIN message_system
                         ON message_system.message_row_id = message._id
                     LEFT JOIN message_system_group
@@ -319,48 +320,55 @@ def messages(db, data, media_folder, timezone_offset, dateData):
     # ['key_remote_jid', '_id', 'key_from_me', 'timestamp', 'data', 'status', 'edit_version', 'thumb_image', 'remote_resource', 'media_wa_type', 'latitude', 'longitude', 'quoted', 'key_id', 'quoted_data', 'message_type', 'group_sender_jid', 'chat_subject']
 
     while content is not None:
-        # print("Lets walk through messages. Here is the first one:")
-        # pprint(dict(content))
-        # choice = input()
-
-        if content["key_remote_jid"] not in data:
-            data[content["key_remote_jid"]] = ChatStore(Device.ANDROID, content["chat_subject"])
-
-        # print(f"Timestamp is:") 
-        timestamp = content["timestamp"]
-        timestamp = timestamp / 1000 if timestamp > 9999999999 else timestamp
-
-        date = datetime.fromtimestamp(timestamp, TimeZone(timezone_offset)).strftime("%Y-%m-%d")
-        if date not in dateData:
-            dateData[date] = ChronoStore(Device.ANDROID, date)
+    # this has not yet happened
         if content["key_remote_jid"] is None:
             print("Skipped message with data")
             pprint(dict(content))
             choice = input()
 
             continue  # Not sure
-        if "sender_jid_row_id" in content:
-            sender_jid_row_id = content["sender_jid_row_id"]
-        else:
-            sender_jid_row_id = None
+
+        remote_jid = content["key_remote_jid"]
+
+        timestamp = content["timestamp"]
+        timestamp = timestamp / 1000 if timestamp > 9999999999 else timestamp
+        date = datetime.fromtimestamp(timestamp, TimeZone(timezone_offset)).strftime("%Y-%m-%d")
+
+        # create a ChatStore for this contact
+        if remote_jid not in data:
+            data[remote_jid] = ChatStore(Device.ANDROID, content["chat_subject"])
+
+        # and a ChronoStore for the date, if not yet created
+        if date not in dateData:
+             dateData[date] = ChronoStore(Device.ANDROID, date)
+
+        sender_jid_row_id = content["sender_jid_row_id"] if "sender_jid_row_id" in content else None
+
         message = Message(
-            from_me=not sender_jid_row_id and content["key_from_me"],
-            timestamp=content["timestamp"],
-            time=content["timestamp"],
-            key_id=content["key_id"],
-            remote_jid=content["key_remote_jid"],
+            id=content["_id"],
             cc=content,
+            from_me=not sender_jid_row_id and content["key_from_me"],
+            key_id=content["key_id"],
+            remote_jid=remote_jid,
             sender=content["sender_jid_row_id"],
+            time=content["timestamp"],
+            timestamp=content["timestamp"],
             timezone_offset=timezone_offset
         )
+
         message.status = content["status"]
-        if not sender_jid_row_id and content["key_from_me"]:
-            jajaid = content["key_remote_jid"]
-            fallback = jajaid.split('@')[0] if "@" in jajaid else None
-            if jajaid in data:
-                name = data[jajaid].name
+        message.output_file_name = get_file_name(remote_jid, data[remote_jid])
+
+        if not message.from_me:
+            # if not sender_jid_row_id and content["key_from_me"]:
+            name = fallback = None
+            fallback = remote_jid.split('@')[0] if "@" in remote_jid else None
+            if remote_jid in data:
+                name = data[remote_jid].name
             recipient = name or fallback
             message.recipient = recipient
+
+        # handle binary messages
         if isinstance(content["data"], bytes):
             message.data = ("The message is binary data and its base64 is "
                 '<a href="https://gchq.github.io/CyberChef/#recipe=From_Base64'
@@ -368,12 +376,13 @@ def messages(db, data, media_folder, timezone_offset, dateData):
                 f"""('Decode')&input={b64encode(b64encode(content["data"])).decode()}">""")
             message.data += b64encode(content["data"]).decode("utf-8") + "</a>"
             message.safe = message.meta = True
-            data[content["key_remote_jid"]].add_message(content["_id"], message)
+            data[remote_jid].add_message(content["_id"], message)
             dateData[date].add_message(content["_id"], message)
             i += 1
             content = c.fetchone()
             continue
-        if content["jid_type"] == JidType.GROUP and content["key_from_me"] == 0:
+
+        if content["jid_type"] == JidType.GROUP and not message.from_me:
             name = fallback = None
             if table_message:
                 if content["sender_jid_row_id"] > 0:
@@ -392,10 +401,6 @@ def messages(db, data, media_folder, timezone_offset, dateData):
             message.sender = name or fallback
         else:
             message.sender = None
-
-            # data[content["key_remote_jid"]].messages[content["_id"]].sender = None
-            # dateData.messages[oId].sender = content['key_remote_jid']
-            # print(chronoData.messages[content["_id"]].to_json())
 
         if content["quoted"] is not None:
             message.reply = content["quoted"]
@@ -436,9 +441,12 @@ def messages(db, data, media_folder, timezone_offset, dateData):
                         fallback = _jid.split('@')[0]
                 else:
                     name = "You"
+
             message.data = determine_metadata(content, name or fallback)
+
             if isinstance(message.data, str) and "<br>" in message.data:
                 message.safe = True
+
             if message.data is None:
                 if content["video_call"] is not None:  # Missed call
                     message.meta = True
@@ -452,7 +460,7 @@ def messages(db, data, media_folder, timezone_offset, dateData):
         else:
             # Real message
             message.sticker = content["media_wa_type"] == 20  # Sticker is a message
-            if content["key_from_me"] == 1:
+            if message.from_me:
                 if content["status"] == 5 and content["edit_version"] == 7 or table_message and content["media_wa_type"] == 15:
                     msg = "Message deleted"
                     message.meta = True
@@ -463,6 +471,30 @@ def messages(db, data, media_folder, timezone_offset, dateData):
                     else:
                         msg = content["data"]
                         if msg is not None:
+                            
+                            '''
+                            isReliable, textBytesFound, details = cld2.detect(
+                                msg
+                            )           
+                            
+                            print(f"Detected language: {details[0][0]} {details[0][1]} - {isReliable}")
+                            if details[0][1] != 'en' and details[0][1] != 'un':
+                                out_path = f'WhatsApp/translations/{message.id}.txt.{details[0][1]}'
+                                
+                                print(f"  Translating with output to: {out_path}")
+                                print(f"{msg}")
+                                print(f"The command: 'echo \"{msg}\" | trans &> {out_path}'")
+                                output = subprocess.getoutput(f'echo "{msg}" | trans > {out_path}')
+                                print(f"Here is output: {output}")
+                                msg += "<br /><br />" + output
+                            '''
+                            
+                            out_path = f'WhatsApp/translations/{message.id}.txt.pt'
+                            if os.path.isfile(out_path):
+                                message.file_path_txt = out_path
+                            
+
+                            
                             if "\r\n" in msg:
                                 msg = msg.replace("\r\n", "<br>")
                             if "\n" in msg:
@@ -472,9 +504,6 @@ def messages(db, data, media_folder, timezone_offset, dateData):
                     msg = "Message deleted"
                     message.meta = True
                 else:
-                    # if _jid in data:
-                    #     name = data[_jid].name
-                    #     fallback = _jid.split('@')[0] if "@" in _jid else None
                     if content["media_wa_type"] == 5:
                         msg = f"Location shared: {content['latitude'], content['longitude']}"
                         message.meta = True
@@ -524,12 +553,12 @@ def media(db, data, media_folder, dateData):
                         mime_type,
                         media_key,
                         file_hash,
-						thumbnail
+                        thumbnail
                  FROM message_media
                     INNER JOIN messages
                         ON message_media.message_row_id = messages._id
-					LEFT JOIN media_hash_thumbnail
-						ON message_media.file_hash = media_hash_thumbnail.media_hash
+                    LEFT JOIN media_hash_thumbnail
+                        ON message_media.file_hash = media_hash_thumbnail.media_hash
                 WHERE jid.type <> 7
                 ORDER BY messages.key_remote_jid ASC"""
         )
@@ -551,7 +580,7 @@ def media(db, data, media_folder, dateData):
                     INNER JOIN jid
                         ON jid._id = chat.jid_row_id
                     LEFT JOIN media_hash_thumbnail
-						ON message_media.file_hash = media_hash_thumbnail.media_hash
+                        ON message_media.file_hash = media_hash_thumbnail.media_hash
                 WHERE jid.type <> 7
                 ORDER BY message_row_id ASC"""
         )
@@ -564,9 +593,12 @@ def media(db, data, media_folder, dateData):
 
     mms = 0
     mm = 0
+    mmi = 0
+    mmg = 0
+    mmv = 0
     x = 0
 
-    print(dict(content))
+    #print(dict(content))
 
     while content is not None:
         file_path = f"{media_folder}/{content['file_path']}"
@@ -575,42 +607,128 @@ def media(db, data, media_folder, dateData):
         message.media = True
         media_missing = False
         chrono_message.media = True
+
+        basename = os.path.basename(file_path)
+        dirname = os.path.dirname(file_path)
+
+        # we pretend the file exists and perform some further checks
         if os.path.isfile(file_path) or True:
             if not os.path.isfile(file_path):
-                media_missing = True
-                if "Sent" in file_path:
-                    mms += 1
-                    print(f"Media Sent - {file_path} is missing")
-                    if "Animated" in file_path:
-                        # up to Animated
-                        dirname = os.path.dirname(file_path)
-                        # up to Media
-                        mediap = os.path.dirname(dirname)
 
-                        video_path = mediap + "/WhatsApp Video/Sent/" + basename
+                print(f"Media - {file_path} is missing")
+                    
+                if "Sent" in file_path:
+                    print(f"Media Sent? - {file_path} is missing")
+                    mms += 1
+
+                    # we go two levels up for sent
+                    media_path = os.path.dirname(os.path.dirname(dirname))
+
+                    if "Images" in file_path:
+                        images_path_in = media_path + "/WhatsApp Images/" + basename
+
+                        if os.path.isfile(images_path_in):
+                            print(f"Media image {basename} present in Images incoming but missing where expected - ID {message.id}")
+                            print(f"Will move to {file_path} on input")
+                            a = input()
+                            shutil.move(images_path_in, file_path)
+
+                    if "Video" in file_path:
+                        anim_path_in = media_path + "/WhatsApp Animated Gifs/" + basename
+                        anim_path_sent = media_path + "/WhatsApp Animated Gifs/" + basename
+                        video_path_in = media_path + "/WhatsApp Video/" + basename
+
+                        if os.path.isfile(anim_path_in):
+                            print(f"Media animated {basename} present in Animated Gifs incoming but missing where expected - ID {message.id}")
+                            print(f"Will move to {file_path} on input")
+                            a = input()
+                            shutil.move(anim_path_in, file_path)
+
+                        if os.path.isfile(video_path_in):
+                            print(f"Media animated {basename} present in Videos/Sent but missing where expected - ID {message.id}")
+                            print(f"Will move to {file_path} on input")
+                            a = input()
+                            shutil.move(video_path_in, file_path)
+
+                        if os.path.isfile(anim_path_sent):
+                            print(f"Media animated {basename} present in Videos but missing where expected - ID {message.id}")
+                            print(f"Will move to {file_path} on input")
+                            a = input()
+                            shutil.move(anim_path_sent, file_path)        
+                        
+                    if "Animated" in file_path:
+                        # up to Media
+                        anim_path_in = dirname + "/WhatsApp Animated Gifs/" + basename
+                        video_path = media_path + "/WhatsApp Video/Sent/" + basename
+                        video_path_in = media_path + "/WhatsApp Video/" + basename
+
+                        if os.path.isfile(anim_path_in):
+                            print(f"Media animated {basename} present in Animated Gifs incoming but missing where expected - ID {message.id}")
+                            print(f"Will move to {file_path} on input")
+                            a = input()
+                            shutil.move(anim_path_in, file_path)
+
                         if os.path.isfile(video_path):
-                            print(f"Media animataed {basename} present in Videos but missing where expected - ID {message.id}")
-                            print(f"Moved to {file_path} on input")
+                            print(f"Media animated {basename} present in Videos/Sent but missing where expected - ID {message.id}")
+                            print(f"Will move to {file_path} on input")
                             a = input()
                             shutil.move(video_path, file_path)
+
+                        if os.path.isfile(video_path_in):
+                            print(f"Media animated {basename} present in Videos but missing where expected - ID {message.id}")
+                            print(f"Will move to {file_path} on input")
+                            a = input()
+                            shutil.move(video_path_in, file_path)
                 else:
-                    print(f"Media - {file_path} is missing")
                     mm += 1
-                    basename = os.path.basename(file_path)
-                    dirname = os.path.dirname(file_path)
+
+                    # we go one level up for incoming
+                    media_path = os.path.dirname(dirname)
+                    # and we'll check the respective sent path for this type
                     sent_path = dirname + "/Sent/" + basename
+
                     if os.path.isfile(sent_path):
                         print(f"Media {basename} present in Sent but missing where expected - ID {message.id}")
-                        shutil.move(sent_path, dirname)
-                        print(f"Moved to {dirname}")
+                        print(f"Will move to {dirname} on input")
                         a = input()
+                        shutil.move(sent_path, dirname)
+
                     if "Animated" in file_path:
-                        video_path = os.path.dirname(dirname) + "/WhatsApp Video/" + basename
+                        video_path = media_path + "/WhatsApp Video/" + basename
+                        video_path_sent = media_path + "/WhatsApp Video/Sent/" + basename
+
                         if os.path.isfile(video_path):
                             print(f"Media animataed {basename} present in Videos but missing where expected - ID {message.id}")
-                            print(f"Moved to {dirname} on input")
+                            print(f"Moved to {video_path} on input")
                             a = input()
                             shutil.move(video_path, dirname)
+
+                        if os.path.isfile(video_path_sent):
+                            print(f"Media animataed {basename} present in Videos/Sent but missing where expected - ID {message.id}")
+                            print(f"Moved to {video_path_sent} on input")
+                            a = input()
+                            shutil.move(video_path_sent, dirname)
+
+
+
+            # Check if Animated GIF is duplicated in Videos
+            if "Animated" in file_path:
+                problem_path = os.path.dirname(file_path) + "/Problem"
+
+                video_path =  file_path.replace("Animated Gifs", "Video")
+                if os.path.isfile(video_path):
+                    print(f"Media {basename} present in Videos when it is Animated GIF - ID {message.id}")
+                    print(f"Removing {video_path} on input")
+                    a = input()
+                    os.unlink(video_path)
+                   
+                video_sent_path = file_path.replace("Animated Gifs", "Video/Sent")
+                if os.path.isfile(video_sent_path):
+                    print(f"Media {basename} present in Videos/Sent when it is Animated GIF - ID {message.id}")
+                    print(f"Removing {video_sent_path} on input")
+                    a =  input()
+                    os.unlink(video_sent_path)
+         
 
             # a = input()
             # check if image exists in Sent when it shouldn't
@@ -630,24 +748,43 @@ def media(db, data, media_folder, dateData):
                         print(f"Moved to {problem_path}")
                         # a = input()
 
-            if not os.path.isfile(file_path):
-                if file_path is not None:
-                    bname = os.path.basename(file_path)
-                    if bname is not None and bname != 'None':
-                        fname = os.path.splitext(bname)[0]
-                        print(f"Media {file_path} is still missing, attempting lolcate {fname}")
-                        print(f"lolcate '{bname}'")
-                        print(f"cp thepathfound {file_path}")
+            if file_path is not None:
+                if basename is not None and basename != 'None':
+                    if not os.path.isfile(file_path):
+                        filename = os.path.splitext(basename)[0]
+                        print(f"Media {file_path} is still missing, attempting lolcate {filename}")
+
+                        media_missing = True
+                        if "Video" in file_path:
+                            mmv += 1
+                        elif "Images" in file_path:
+                            mmi += 1
+                        elif "Animated" in file_path:
+                            mmg += 1
+
+                        # os.system(f"lolcate {filename}")
+                        # print("Contininue on input")
+                        # print(f"cp thepathfound {file_path}")
+                        # a = input()
 
             message.data = file_path
             message.file_path = file_path
             chrono_message.data = file_path
             chrono_message.file_path = file_path
+            
+            # append transcription/translations
             if (file_path.endswith('opus')):
                 if os.path.isfile(file_path + '.txt'):
+                    message.file_path_txt = file_path + '.txt'                    
                     chrono_message.file_path_txt = file_path + '.txt'
+
                     if os.path.isfile(chrono_message.file_path_txt + '.en'):
+                        message.file_path_txt_en =  chrono_message.file_path_txt + '.en'
                         chrono_message.file_path_txt_en =  chrono_message.file_path_txt + '.en'
+                    else:
+                        print(f"Warning: No specific english present - maybe it's english - {file_path}")
+                else:
+                    print(f"Warning: No transcription found for voice note: {file_path}")
 
             if content["mime_type"] is None:
                 guess = mime.guess_type(file_path)[0]
@@ -697,21 +834,10 @@ def media(db, data, media_folder, dateData):
     print(
         f"Processing media...({total_row_number}/{total_row_number})", end="\r")
 
-    print(f"Missing media (image/jpeg): {mm}")
+    print(f"Missing media: {mm}")
     print(f"Missing media sent: {mms}")
+    print(f"Videos: {mmv}   Images: {mmi}    Animated GIFs: {mmg}")
     a = input()
-
-def split_dictionary(input_dict, chunk_size):
-    res = []
-    new_dict = {}
-    for k, v in input_dict.items():
-        if len(new_dict) < chunk_size:
-            new_dict[k] = v
-        else:
-            res.append(new_dict)
-            new_dict = {k: v}
-    res.append(new_dict)
-    return res;
 
 def vcard(db, data, media_folder, dateData):
     c = db.cursor()
@@ -744,6 +870,7 @@ def vcard(db, data, media_folder, dateData):
     total_row_number = len(rows)
     print(f"\nProcessing vCards...(0/{total_row_number})", end="\r")
     path = f"{media_folder}/vCards"
+
     if not os.path.isdir(path):
         Path(path).mkdir(parents=True, exist_ok=True)
     for index, row in enumerate(rows):
@@ -760,18 +887,16 @@ def vcard(db, data, media_folder, dateData):
             data[row["key_remote_jid"]] = ChatStore(Device.ANDROID, row["media_name"])
         if row["message_row_id"] not in data[row["key_remote_jid"]].messages:
             continue
+
         message = data[row["key_remote_jid"]].messages[row["message_row_id"]]
-        chrono_message = dateData[message.date].messages[row["message_row_id"]]
 
         message.data = media_name + \
             "The vCard file cannot be displayed here, " \
             f"however it should be located at {file_path}"
         message.mime = "text/x-vcard"
         message.meta = True
-        chrono_message.data = message.data
-        chrono_message.mime = message.mime
-        chrono_message.meta = message.meta
 
+        dateData[message.date].messages[row["message_row_id"]] = message
         print(f"Processing vCards...({index + 1}/{total_row_number})", end="\r")
 
 
@@ -809,6 +934,7 @@ def calls(db, data, timezone_offset, dateData):
             fallback = None
 
         call = Message(
+            id=content["_id"],
             from_me=content["from_me"],
             timestamp=content["timestamp"],
             time=content["timestamp"],
@@ -838,12 +964,12 @@ def calls(db, data, timezone_offset, dateData):
         chat.add_message(content["_id"], call)
 
 
-        print(f"Timestamp is:") 
+        # print(f"Timestamp is:") 
         timestamp = call.timestamp
         timestamp = timestamp / 1000 if timestamp > 9999999999 else timestamp
 
         date = datetime.fromtimestamp(timestamp, TimeZone(timezone_offset)).strftime("%Y-%m-%d")
-        print(f"Date is: " + date)
+        # print(f"Date is: " + date)
 
         if date not in dateData:
             dateData[date] = ChronoStore(Device.ANDROID, date)
@@ -878,21 +1004,33 @@ def create_html(
         if len(chat.messages) == 0:
             continue
         safe_file_name, name = get_file_name(contact, chat)
+        chat.output_html = safe_file_name
+        contact_messages = len(chat.messages)
+        
+        print(f"Processing {contact} - total: {contact_messages} messages")
 
         if maximum_size is not None:
             current_size = 0
             current_page = 1
             render_box = []
+
             if maximum_size == 0:
                 maximum_size = MAX_SIZE
+
             last_msg = chat.get_last_message().key_id
+            
             for message in chat.get_messages():
                 if message.data is not None and not message.meta and not message.media:
                     current_size += len(message.data) + ROW_SIZE
                 else:
                     current_size += ROW_SIZE + 100  # Assume media and meta HTML are 100 bytes
+            
                 if current_size > maximum_size:
                     output_file_name = f"{output_folder}/{safe_file_name}-{current_page}.html"
+                    output_messages = len(render_box)
+                    print(f"Current size: {current_size}    Maximum size: {maximum_size}     Outputting to {output_file_name}")
+                    print(f"Render box has length: {output_messages}")
+
                     rendering(
                         output_file_name,
                         template,
@@ -903,15 +1041,23 @@ def create_html(
                         f"{safe_file_name}-{current_page + 1}.html",
                         chat
                     )
+
                     render_box = [message]
                     current_size = 0
                     current_page += 1
                 else:
+                    if current_page == 1:
+                        output_file_name = f"{output_folder}/{safe_file_name}.html"
+                    else:
+                        output_file_name = f"{output_folder}/{safe_file_name}-{current_page}.html"
+                    
                     if message.key_id == last_msg:
                         if current_page == 1:
                             output_file_name = f"{output_folder}/{safe_file_name}.html"
                         else:
                             output_file_name = f"{output_folder}/{safe_file_name}-{current_page}.html"
+
+                        print(f"Printing {output_file_name} with total: {len(render_box)} messages")
                         rendering(
                             output_file_name,
                             template,
@@ -922,8 +1068,13 @@ def create_html(
                             False,
                             chat
                         )
+
+                        # print(f"Supposedly at last page. We did {len(render_box)} messages")
+                        # b = input()
                     else:
+                        message.output_file_name = output_file_name
                         render_box.append(message)
+                    
         else:
             output_file_name = f"{output_folder}/{safe_file_name}.html"
             rendering(
@@ -940,7 +1091,6 @@ def create_html(
             print(f"Generating chats...({current}/{total_row_number})", end="\r")
 
     print(f"Generating chats...({total_row_number}/{total_row_number})", end="\r")
-
 
 def create_html_chrono(
         data,
@@ -962,21 +1112,23 @@ def create_html_chrono(
         os.mkdir(output_folder)
 
     w3css = get_status_location(output_folder, offline_static)
-
-    # split = split_dictionary(chronoData.messages, 1000)
-    # first = split[0]
-    # print(split)
+    the_keys = list(dateData.keys())
 
     for current, date in enumerate(dateData):
-    
-        print(date)
+        k = current + 1 if current != len(dateData) - 1 else 0
+        j = current - 1 if current != 1 else 0
+        next = the_keys[k]
+        prev = the_keys[j]
         chat = dateData[date]
 
         safe_file_name = f"output-{date}"
+        next_file_name = f"output-{next}"
+        prev_file_name = f"output-{prev}"
 
         output_file_name = f"{output_folder}/{safe_file_name}.html"
+        output_file_name_next = f"{next_file_name}.html"
+        output_file_name_prev = f"{prev_file_name}.html"
 
-        # msgs=dateData.dates[date].values(),
         rendering(
             output_file_name,
             template,
@@ -984,180 +1136,13 @@ def create_html_chrono(
             chat.get_messages(),
             date,
             w3css,
-            False,
-            chat
+            output_file_name_next,
+            chat,
+            output_file_name_prev
         )
         if current % 10 == 0:
             print(f"Generating chats...({current}/{total_row_number})", end="\r")
 
     print(f"Generating chats...({total_row_number}/{total_row_number})", end="\r")
 
-'''
-if __name__ == "__main__":
-    from optparse import OptionParser
-    parser = OptionParser()
-    parser.add_option(
-        "-w",
-        "--wa",
-        dest="wa",
-        default="wa.db",
-        help="Path to contact database")
-    parser.add_option(
-        "-m",
-        "--media",
-        dest="media",
-        default="WhatsApp",
-        help="Path to WhatsApp media folder"
-    )
-    # parser.add_option(
-    #     "-t",
-    #     "--template",
-    #     dest="html",
-    #     default="wa.db",
-    #     help="Path to HTML template")
-    (options, args) = parser.parse_args()
-    msg_db = "msgstore.db"
-    output_folder = "temp"
-    contact_db = options.wa
-    media_folder = options.media
 
-    if len(args) == 1:
-        msg_db = args[0]
-    elif len(args) == 2:
-        msg_db = args[0]
-        output_folder = args[1]
-
-    data = {}
-    dateData = ChronoStore()
-
-    if os.path.isfile(contact_db):
-        with sqlite3.connect(contact_db) as db:
-            contacts(db, data)
-    if os.path.isfile(msg_db):
-        with sqlite3.connect(msg_db) as db:
-            messages(db, data, dateData)
-            media(db, data, dateData, media_folder)
-            vcard(db, data)
-        create_html(data, dateData, output_folder, 'chrono.html')
-        # create_html(data, chronoData, output_folder)
-
-    if not os.path.isdir(f"{output_folder}/WhatsApp"):
-        shutil.move(media_folder, f"{output_folder}/")
-
-    with open("result.json", "w") as f:
-        data = json.dumps(data)
-        print(f"\nWriting JSON file...({int(len(data)/1024/1024)}MB)")
-        f.write(data)
-
-    print("Everything is done!")
-
-
-        # a chat_subject implies that it is a group chat message
-        if content["chat_subject"] is not None:
-            _jid = content["group_sender_jid"]
-        else:
-            _jid = content["key_remote_jid"]
-
-        if _jid is not None:
-            # attempt to get a name from contacts data, orht
-            name = False
-                
-            if _jid in data:
-                name = data[_jid].name
-
-            fallback = _jid.split('@')[0] if "@" in _jid else None
-        
-        if not name:
-            name = fallback
-             
-        oId = content['_id']
-
-        oMsg = Message(
-            from_me=content["key_from_me"],
-            timestamp=content["timestamp"],
-            time=content["timestamp"],
-            key_id=content["key_id"],
-            remote_jid=content["key_remote_jid"],
-            cc=content,
-            sender=name,
-            timezone_offset=timezone_offset
-        )
-
-        jss = oMsg.to_json()
-
-        # for k in jss:
-        #     print (k, jss[k])
-
-        if content["key_remote_jid"] not in data:
-            # contact not found
-            data[content["key_remote_jid"]] = ChatStore()
-            # print("Added missing id: "+content["key_remote_id"]+" to data")
-        if content["key_remote_jid"] is None:
-            raise Exception('No key_remote_jid - panic.')
-            continue # Not sure
-
-        data[content["key_remote_jid"]].add_message(oId, oMsg)
-        dateData.add_message(oId, oMsg)
-        dateData.messages[oId].sender = name  
-
-        if oMsg.date not in dateData.dates:
-            dateData.dates[oMsg.date] = {}
-
-        dateData.dates[oMsg.date][oId] = oMsg
-
-        if "-" in content["key_remote_jid"] and content["key_from_me"] == 0:
-            name = None
-'''
-
-'''
-        if content["status"] == 6:  # 6 = Metadata, otherwise it's a message
-            if (not table_message and "-" in content["key_remote_jid"]) or \
-               (table_message and content["chat_subject"] is not None):
-                # Is Group
-                if content["data"] is not None:
-                    try:
-                        int(content["data"])
-                    except ValueError:
-                        msg = f"The group name changed to {content['data']}"
-                        data[content["key_remote_jid"]].messages[content["_id"]].data = msg
-                        data[content["key_remote_jid"]].messages[content["_id"]].meta = True
-                        # chronoData.add_message(content["_id"],  data[content["key_remote_jid"]].messages[content["_id"]])
-                    else:
-                        data[content["key_remote_jid"]].delete_message(content["_id"])
-                else:
-                    thumb_image = content["thumb_image"]
-                    if thumb_image is not None:
-                        if b"\x00\x00\x01\x74\x00\x1A" in thumb_image:
-                            # Add user
-                            added = phone_number_re.search(
-                                thumb_image.decode("unicode_escape"))[0]
-                            if added in data:
-                                name_right = data[added].name
-                            else:
-                                name_right = added.split('@')[0]
-                            if content["remote_resource"] is not None:
-                                if content["remote_resource"] in data:
-                                    name_left = data[content["remote_resource"]].name
-                                else:
-                                    name_left = content["remote_resource"].split('@')[0]
-                                msg = f"{name_left} added {name_right or 'You'}"
-                            else:
-                                msg = f"Added {name_right or 'You'}"
-                        elif b"\xac\xed\x00\x05\x74\x00" in thumb_image:
-                            # Changed number
-                            original = content["remote_resource"].split('@')[0]
-                            changed = thumb_image[7:].decode().split('@')[0]
-                            msg = f"{original} changed to {changed}"
-                        data[content["key_remote_jid"]].messages[content["_id"]].data = msg
-                        data[content["key_remote_jid"]].messages[content["_id"]].meta = True
-                        dateData.add_message(content["_id"],  data[content["key_remote_jid"]].messages[content["_id"]])
-                    else:
-                        if content["data"] is None:
-                            data[content["key_remote_jid"]].delete_message(content["_id"])
-            else:
-                # Private chat
-                if content["data"] is None and content["thumb_image"] is None:
-                    # print("Deleted private chat: ", content["_id"])
-                    # print(data[content["key_remote_jid"]].messages[content["_id"]].to_json())
-                    data[content["key_remote_jid"]].delete_message(content["_id"])
-'''

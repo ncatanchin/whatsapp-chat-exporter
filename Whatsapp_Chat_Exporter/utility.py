@@ -17,7 +17,7 @@ except ImportError:
     class IntEnum(int, Enum):
         pass
 
-MAX_SIZE = 4 * 1024 * 1024  # Default 4MB
+MAX_SIZE = 0.5 * 1024 * 1024  # Default 4MB
 ROW_SIZE = 0x3D0
 
 
@@ -75,6 +75,7 @@ def rendering(
         w3css,
         next,
         chat,
+        prev=None
     ):
     if chat.their_avatar_thumb is None and chat.their_avatar is not None:
         their_avatar_thumb = chat.their_avatar
@@ -91,6 +92,7 @@ def rendering(
                 w3css=w3css,
                 next=next,
                 status=chat.status,
+                prev=prev
             )
         )
 
