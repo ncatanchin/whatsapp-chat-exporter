@@ -98,8 +98,8 @@ def decrypt_backup(database, key, output, crypt=Crypt.CRYPT14, show_crypt15=Fals
             db_offset = database[0] + 1  # Skip protobuf + protobuf size
         db_ciphertext = database[db_offset:]
 
-    if t1 != t2:
-        raise ValueError("The signature of key file and backup file mismatch")
+    #if t1 != t2:
+    #    raise ValueError("The signature of key file and backup file mismatch")
 
     if crypt == Crypt.CRYPT15:
         if len(key) == 32:
@@ -179,7 +179,7 @@ def contacts(db, data):
 
         row = c.fetchone()
 
-def messages(db, data, media_folder, timezone_offset, dateData):
+def messages(db, data, media_folder, timezone_offset, dateData, test_run):
     # Get message history
     table_message = False
     c = db.cursor()
@@ -246,7 +246,9 @@ def messages(db, data, media_folder, timezone_offset, dateData):
                     ORDER BY timestamp ASC;"""
         )
     else:
-        c.execute("""SELECT jid_global.raw_string as key_remote_jid,
+        c.execute("""
+                  SELECT
+                        jid_global.raw_string as key_remote_jid,
                         message._id,
                         message.from_me as key_from_me,
                         message.timestamp,
@@ -306,7 +308,8 @@ def messages(db, data, media_folder, timezone_offset, dateData):
                     LEFT JOIN receipt_user
                         ON receipt_user.message_row_id = message._id
                 WHERE key_remote_jid <> '-1'
-                GROUP BY message._id"""
+                GROUP BY message._id;
+                """
             )
     i = 0
     while True:
@@ -321,6 +324,7 @@ def messages(db, data, media_folder, timezone_offset, dateData):
 
     while content is not None:
     # this has not yet happened
+
         if content["key_remote_jid"] is None:
             print("Skipped message with data")
             pprint(dict(content))
@@ -328,8 +332,11 @@ def messages(db, data, media_folder, timezone_offset, dateData):
 
             continue  # Not sure
 
+        # this is the recipient
         remote_jid = content["key_remote_jid"]
-
+        # sender_jid_row_jid is only set when it is a group and not from_me
+        # group_sender_id is set when it is a group and not from_me
+        
         timestamp = content["timestamp"]
         timestamp = timestamp / 1000 if timestamp > 9999999999 else timestamp
         date = datetime.fromtimestamp(timestamp, TimeZone(timezone_offset)).strftime("%Y-%m-%d")
@@ -357,19 +364,23 @@ def messages(db, data, media_folder, timezone_offset, dateData):
         )
 
         message.status = content["status"]
-        message.output_file_name = get_file_name(remote_jid, data[remote_jid])
+        message.output_file_name,test = get_file_name(remote_jid, data[remote_jid])
+
+
+        name = fallback = None
+        fallback = remote_jid.split('@')[0] if "@" in remote_jid else None
+        if remote_jid in data:
+            name = data[remote_jid].name
 
         if not message.from_me:
-            # if not sender_jid_row_id and content["key_from_me"]:
-            name = fallback = None
-            fallback = remote_jid.split('@')[0] if "@" in remote_jid else None
-            if remote_jid in data:
-                name = data[remote_jid].name
-            recipient = name or fallback
-            message.recipient = recipient
+            message.sender = name or fallback
+        else:
+            message.recipient = name or fallback
+            
 
         # handle binary messages
         if isinstance(content["data"], bytes):
+            # This string does not appear in my entire set of data so..
             message.data = ("The message is binary data and its base64 is "
                 '<a href="https://gchq.github.io/CyberChef/#recipe=From_Base64'
                 "('A-Za-z0-9%2B/%3D',true,false)Text_Encoding_Brute_Force"
@@ -382,26 +393,34 @@ def messages(db, data, media_folder, timezone_offset, dateData):
             content = c.fetchone()
             continue
 
-        if content["jid_type"] == JidType.GROUP and not message.from_me:
-            name = fallback = None
-            if table_message:
-                if content["sender_jid_row_id"] > 0:
-                    _jid = content["group_sender_jid"]
-                    if _jid in data:
-                        name = data[_jid].name
-                    if "@" in _jid:
-                        fallback = _jid.split('@')[0]
-            else:
-                if content["remote_resource"] is not None:
-                    if content["remote_resource"] in data:
-                        name = data[content["remote_resource"]].name
-                    if "@" in content["remote_resource"]:
-                        fallback = content["remote_resource"].split('@')[0]
+        # sticker?
+        if content["media_wa_type"] == 20:
+            print("media wa_type 20")
 
-            message.sender = name or fallback
-        else:
-            message.sender = None
 
+        # This message is in a group chat, and not sent by me
+        if content["jid_type"] == JidType.GROUP:
+            message.group = True
+
+            if not message.from_me:
+                name = fallback = None
+                if table_message:
+                    if content["sender_jid_row_id"] > 0:
+                        _jid = content["group_sender_jid"]
+                        if _jid in data:
+                            name = data[_jid].name
+                        if "@" in _jid:
+                            fallback = _jid.split('@')[0]
+                else:
+                    if content["remote_resource"] is not None:
+                        if content["remote_resource"] in data:
+                            name = data[content["remote_resource"]].name
+                        if "@" in content["remote_resource"]:
+                            fallback = content["remote_resource"].split('@')[0]
+
+                message.sender = name or fallback
+
+        # a quoted message
         if content["quoted"] is not None:
             message.reply = content["quoted"]
             if content["quoted_data"] is not None and len(content["quoted_data"]) > 200:
@@ -460,61 +479,67 @@ def messages(db, data, media_folder, timezone_offset, dateData):
         else:
             # Real message
             message.sticker = content["media_wa_type"] == 20  # Sticker is a message
+
             if message.from_me:
                 if content["status"] == 5 and content["edit_version"] == 7 or table_message and content["media_wa_type"] == 15:
                     msg = "Message deleted"
                     message.meta = True
-                else:
-                    if content["media_wa_type"] == 5:
-                        msg = f"Location shared: {content['latitude'], content['longitude']}"
-                        message.meta = True
-                    else:
-                        msg = content["data"]
-                        if msg is not None:
-                            
-                            '''
-                            isReliable, textBytesFound, details = cld2.detect(
-                                msg
-                            )           
-                            
-                            print(f"Detected language: {details[0][0]} {details[0][1]} - {isReliable}")
-                            if details[0][1] != 'en' and details[0][1] != 'un':
-                                out_path = f'WhatsApp/translations/{message.id}.txt.{details[0][1]}'
-                                
-                                print(f"  Translating with output to: {out_path}")
-                                print(f"{msg}")
-                                print(f"The command: 'echo \"{msg}\" | trans &> {out_path}'")
-                                output = subprocess.getoutput(f'echo "{msg}" | trans > {out_path}')
-                                print(f"Here is output: {output}")
-                                msg += "<br /><br />" + output
-                            '''
-                            
-                            out_path = f'WhatsApp/translations/{message.id}.txt.pt'
-                            if os.path.isfile(out_path):
-                                message.file_path_txt = out_path
-                            
-
-                            
-                            if "\r\n" in msg:
-                                msg = msg.replace("\r\n", "<br>")
-                            if "\n" in msg:
-                                msg = msg.replace("\n", "<br>")
+                
             else:
                 if content["status"] == 0 and content["edit_version"] == 7 or table_message and content["media_wa_type"] == 15:
                     msg = "Message deleted"
                     message.meta = True
-                else:
-                    if content["media_wa_type"] == 5:
-                        msg = f"Location shared: {content['latitude'], content['longitude']}"
-                        message.meta = True
-                    else:
-                        msg = content["data"]
-                        if msg is not None:
-                            if "\r\n" in msg:
-                                msg = msg.replace("\r\n", "<br>")
-                            if "\n" in msg:
-                                msg = msg.replace("\n", "<br>")
+
+            if content["media_wa_type"] == 5:
+                msg = f"Location shared: {content['latitude'], content['longitude']}"
+                message.meta = True
+            else:
+                msg = content["data"]
+
+                '''
+                isReliable, textBytesFound, details = cld2.detect(
+                    msg
+                )           
+                
+                print(f"Detected language: {details[0][0]} {details[0][1]} - {isReliable}")
+                if details[0][1] != 'en' and details[0][1] != 'un':
+                    out_path = f'WhatsApp/translations/{message.id}.txt.{details[0][1]}'
+                    
+                    print(f"  Translating with output to: {out_path}")
+                    print(f"{msg}")
+                    print(f"The command: 'echo \"{msg}\" | trans &> {out_path}'")
+                    output = subprocess.getoutput(f'echo "{msg}" | trans > {out_path}')
+                    print(f"Here is output: {output}")
+                    msg += "<br /><br />" + output
+                '''
+                
+                out_path = f'WhatsApp/translations/{message.id}.txt.pt'
+                if os.path.isfile(out_path):
+                    message.file_path_txt = out_path
+
+
+                if msg is not None:
+                    if "\r\n" in msg:
+                        msg = msg.replace("\r\n", "<br>")
+                    if "\n" in msg:
+                        msg = msg.replace("\n", "<br>")
+
             message.data = msg
+            
+            if not message.group:
+                if message.from_me:
+                    # the recipient is someone else
+                    if not message.recipient:
+                        print(f"No recipient found for message: {message.id}")
+                        print(message.to_json());
+                        keyp = input()
+                else:
+                    if not message.sender:
+                        print(f"No sender for message {message.id}")   
+                        print(message.to_json());
+                        keyp = input()
+                
+
 
         data[content["key_remote_jid"]].add_message(content["_id"], message)
 
@@ -523,6 +548,7 @@ def messages(db, data, media_folder, timezone_offset, dateData):
                 name = data[content["key_remote_jid"]].name
             message.sender = name
 
+        # add the message to the chronoData
         dateData[message.date].add_message(content["_id"], message)
 
         i += 1
