@@ -116,8 +116,11 @@ class ChronoStore():
 class Message():
     def __init__(self, id: int, from_me: Union[bool,int], timestamp: int, time: Union[int,float,str], key_id: int, remote_jid: str, cc, sender: str, timezone_offset: int = 0):
         self.from_me = bool(from_me)
+        # the path to an associated media item
         self.file_path = None
+        # the path to a transcribed text file
         self.file_path_txt = None
+        # the path to a translated to english transcribed text file
         self.file_path_txt_en = None
         self.id = id
 
@@ -139,6 +142,7 @@ class Message():
         self.safe = False
         self.mime = None
         self.output_file_name = ''
+        self.group = False
 
         # self.cc = cc
         # self.remote_jid = remote_jid
@@ -151,6 +155,7 @@ class Message():
         self.caption = None
         self.thumb = None # Android specific
         self.sticker = False
+        self.recipient = None
     
     def to_json(self):
         return {
@@ -174,8 +179,9 @@ class Message():
             'file_path'   : self.file_path,
             'file_path_txt' : self.file_path_txt,
             'file_path_txt_en' : self.file_path_txt_en,
-            'output_file_name': self.output_file_name
+            'output_file_name': self.output_file_name,
+            'recipient': self.recipient,
+            'group': self.group
             # 'remote_jid'  : self.remote_jid,
             # "subject"     : self.subject,
-            # "sender"      : self.sender,
         }
