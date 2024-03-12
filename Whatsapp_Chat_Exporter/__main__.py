@@ -150,6 +150,14 @@ def main():
         help="Maximum (rough) size of a single output file in bytes, 0 for auto"
     )
     parser.add_argument(
+        "--test",
+        dest="test_run",    
+        default=False,
+        action="store_true",
+        help="Test messages"    
+    
+    )
+    parser.add_argument(
         "--no-html",
         dest="no_html",
         default=False,
@@ -261,25 +269,38 @@ def main():
                 print("You must specify the backup file with -b")
                 exit(1)
             print("Decryption key specified, decrypting WhatsApp backup...")
-            if "crypt12" in args.backup:
-                crypt = Crypt.CRYPT12
-            elif "crypt14" in args.backup:
-                crypt = Crypt.CRYPT14
-            elif "crypt15" in args.backup:
-                crypt = Crypt.CRYPT15
+            
             if os.path.isfile(args.key):
                 key = open(args.key, "rb")
             elif all(char in string.hexdigits for char in args.key):
                 key = bytes.fromhex(args.key)
             db = open(args.backup, "rb").read()
             if args.wab:
+
                 wab = open(args.wab, "rb").read()
+                if "crypt12" in args.wab:
+                    crypt = Crypt.CRYPT12
+                elif "crypt14" in args.wab:
+                    crypt = Crypt.CRYPT14
+                elif "crypt15" in args.wab:
+                    crypt = Crypt.CRYPT15
+                    
                 error_wa = extract.decrypt_backup(wab, key, contact_db, crypt, args.showkey, DbType.CONTACT)
                 if isinstance(key, io.IOBase):
                     key.seek(0)
             else:
                 error_wa = 0
-            error_message = extract.decrypt_backup(db, key, msg_db, crypt, args.showkey, DbType.MESSAGE)               
+
+            crypt = None
+            if "crypt12" in args.backup:
+                crypt = Crypt.CRYPT12
+            elif "crypt14" in args.backup:
+                crypt = Crypt.CRYPT14
+            elif "crypt15" in args.backup:
+                crypt = Crypt.CRYPT15
+            
+            if crypt:
+                error_message = extract.decrypt_backup(db, key, msg_db, crypt, args.showkey, DbType.MESSAGE)               
             if error_wa != 0:
                 error = error_wa
             elif error_message != 0:
@@ -345,11 +366,12 @@ def main():
         if os.path.isfile(msg_db):
             with sqlite3.connect(msg_db) as db:
                 db.row_factory = sqlite3.Row
-                messages(db, data, args.media, args.timezone_offset, chronoData)
-                media(db, data, args.media, chronoData)
-                vcard(db, data, args.media, chronoData)
-                if args.android:
-                    extract.calls(db, data, args.timezone_offset, chronoData)
+                messages(db, data, args.media, args.timezone_offset, chronoData, args.test_run)
+                if not args.test_run:
+                    media(db, data, args.media, chronoData)
+                    vcard(db, data, args.media, chronoData)
+                    if args.android:
+                        extract.calls(db, data, args.timezone_offset, chronoData)
             if not args.no_html:
                 create_html(
                     data,
@@ -394,8 +416,6 @@ def main():
                     except PermissionError:
                         print("\nCannot remove original WhatsApp directory. "
                             "Perhaps the directory is opened?", end="\n")
-        print("\nAwait keypress", end="\n")
-        a = input()
     elif args.exported:
         extract_exported.messages(args.exported, data, args.assume_first_as_me)
         if not args.no_html:
