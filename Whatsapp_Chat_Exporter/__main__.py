@@ -20,7 +20,7 @@ from utility import Crypt, DbType, check_update, import_from_json
 from argparse import ArgumentParser, SUPPRESS
 from sys import exit
 try:
-    from .__init__ import __version__
+    from __init__ import __version__
 except ImportError:
     from Whatsapp_Chat_Exporter.__init__ import __version__
 
