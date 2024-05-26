@@ -328,7 +328,7 @@ def messages(db, data, media_folder, timezone_offset, dateData, test_run):
         if content["key_remote_jid"] is None:
             print("Skipped message with data")
             pprint(dict(content))
-            choice = input()
+            # choice = input()
 
             continue  # Not sure
 
@@ -595,6 +595,7 @@ def media(db, data, media_folder, dateData):
                     message_url,
                     mime_type,
                     media_key,
+                    hex(media_key) AS hex_key,
                     file_hash,
                     thumbnail,
                     message.status
@@ -630,6 +631,7 @@ def media(db, data, media_folder, dateData):
         file_path = f"{media_folder}/{content['file_path']}"
         message = data[content["key_remote_jid"]].messages[content["message_row_id"]]
         chrono_message = dateData[message.date].messages[content["message_row_id"]]
+        media_key = content['hex_key']
         message.media = True
         media_missing = False
         chrono_message.media = True
@@ -783,6 +785,21 @@ def media(db, data, media_folder, dateData):
                         media_missing = True
                         if "Video" in file_path:
                             mmv += 1
+
+
+                            # os.system(f"lolcate {filename}")
+                            print("Contininue on input")
+                            print(f"filename: {filename}")
+                            print(f"cp thepathfound {file_path}")
+                            # a = input()
+                            media_url = content['message_url']
+                            
+                            print(f"wget {media_url}")
+                            print(f"python decrypt.py -m 'video' -j '{media_key}" )
+                            
+                            # a = input()
+
+
                         elif "Images" in file_path:
                             mmi += 1
                         elif "Animated" in file_path:
@@ -851,6 +868,7 @@ def media(db, data, media_folder, dateData):
             if not os.path.isfile(thumb_path):
                 with open(thumb_path, "wb") as f:
                     f.write(content["thumbnail"])
+                    f.close()
             message.thumb = thumb_path
             chrono_message.thumb = thumb_path
         i += 1
@@ -863,7 +881,7 @@ def media(db, data, media_folder, dateData):
     print(f"Missing media: {mm}")
     print(f"Missing media sent: {mms}")
     print(f"Videos: {mmv}   Images: {mmi}    Animated GIFs: {mmg}")
-    a = input()
+    # a = input()
 
 def vcard(db, data, media_folder, dateData):
     c = db.cursor()
@@ -907,6 +925,7 @@ def vcard(db, data, media_folder, dateData):
         if not os.path.isfile(file_path):
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(row["vcard"])
+                f.close()
         if row["key_remote_jid"] not in data:
             print(dict(row))
             print("Could not locate contact with id: " + row["key_remote_jid"])
@@ -1030,6 +1049,7 @@ def create_html(
         if len(chat.messages) == 0:
             continue
         safe_file_name, name = get_file_name(contact, chat)
+        safe_file_name = f"test-{safe_file_name}"
         chat.output_html = safe_file_name
         contact_messages = len(chat.messages)
         
@@ -1078,12 +1098,10 @@ def create_html(
                         output_file_name = f"{output_folder}/{safe_file_name}-{current_page}.html"
                     
                     if message.key_id == last_msg:
-                        if current_page == 1:
-                            output_file_name = f"{output_folder}/{safe_file_name}.html"
-                        else:
-                            output_file_name = f"{output_folder}/{safe_file_name}-{current_page}.html"
+                        render_box.append(message)
 
                         print(f"Printing {output_file_name} with total: {len(render_box)} messages")
+    
                         rendering(
                             output_file_name,
                             template,
@@ -1095,8 +1113,6 @@ def create_html(
                             chat
                         )
 
-                        # print(f"Supposedly at last page. We did {len(render_box)} messages")
-                        # b = input()
                     else:
                         message.output_file_name = output_file_name
                         render_box.append(message)
@@ -1147,9 +1163,9 @@ def create_html_chrono(
         prev = the_keys[j]
         chat = dateData[date]
 
-        safe_file_name = f"output-{date}"
-        next_file_name = f"output-{next}"
-        prev_file_name = f"output-{prev}"
+        safe_file_name = f"{date}"
+        next_file_name = f"{next}"
+        prev_file_name = f"{prev}"
 
         output_file_name = f"{output_folder}/{safe_file_name}.html"
         output_file_name_next = f"{next_file_name}.html"
