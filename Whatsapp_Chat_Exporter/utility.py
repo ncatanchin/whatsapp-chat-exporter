@@ -1,11 +1,15 @@
 import jinja2
 import json
 import os
+import tempfile
+import filecmp
+import shutil
 from bleach import clean as sanitize
 from markupsafe import Markup
 from datetime import datetime
 from enum import IntEnum
-from Whatsapp_Chat_Exporter.data_model import ChatStore
+# from Whatsapp_Chat_Exporter.data_model import ChatStore
+from data_model import ChatStore
 try:
     from enum import StrEnum, IntEnum
 except ImportError:
@@ -81,7 +85,12 @@ def rendering(
         their_avatar_thumb = chat.their_avatar
     else:
         their_avatar_thumb = chat.their_avatar_thumb
-    with open(output_file_name, "w", encoding="utf-8") as f:
+    # output_file_name
+
+    _, tmp_file_name = tempfile.mkstemp()
+    print("Temporary file path: " + tmp_file_name)
+    
+    with open(tmp_file_name, "w+", encoding="utf-8") as f:
         f.write(
             template.render(
                 name=name,
@@ -95,6 +104,28 @@ def rendering(
                 prev=prev
             )
         )
+
+        f.close()
+
+    if os.path.isfile(output_file_name):
+        check = filecmp.cmp(tmp_file_name, output_file_name, False)
+        print("Are the files t he same?")
+
+
+        if check is not True:
+            print('Replacing....')
+            shutil.move(tmp_file_name, output_file_name)
+        else:   
+            print('Files same, s hould delte')
+
+    else:
+        print('Moving, new file')
+        shutil.move(tmp_file_name, output_file_name)
+
+
+    # a = input()
+
+    # with open(output_file_name, "w", encoding="utf8") 
 
 
 class Device(StrEnum):
