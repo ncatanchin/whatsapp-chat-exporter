@@ -2,25 +2,40 @@
 
 source /morningstar/python/env/bin/activate
 
-# BASE_DIR=/home/lithium/newfo
-# MDB=msgstore.db
-# KEY=whatsapp.cryptkey
-# WA=wa.db
+BASE_DIR=/mnt/local/renata/Services/WhatsApp
+DATA_DIR="$BASE_DIR/Media/Databases"
+MDB="$DATA_DIR/msgstore.db"
+KEY=whatsapp.cryptkey
+WA="$DATA_DIR/wa.db"
 STAMP=`date +%Y-%m-%d_%H-%M-%S`
-# EXPORT_DIR=/home/lithium/export/$STAMP
+EXPORT_DIR="$BASE_DIR/Exported"
 
-# mkdir $STAMP
+echo Base directory: $BASE_DIR
+echo Data directory: $DATA_DIR
+echo Message database: $MDB
+echo Contacts database:  $WA
+echo Export directory: $EXPORT_DIR
+
+# read -r -p "Are you sure? [y/N]" -n 1
+# echo # (optional) move to a new line
+# case "$REPLY" in
+#   y|Y ) echo "Operation continues";;
+#   * ) echo "Operation is cancelled"; exit 1;
+# esac
 
 python __main__.py \
     -a \
-    --time-offset=11 \
+    --time-offset=10 \
     --size=0 \
+    -d $MDB \
+    -w $WA \
+    -o $EXPORT_DIR
     $@
-#    |& tee logfile-$STAMP.log
 
 #    -m ./WhatsApp \
 #    -o /home/lithium/export/$STAMP \
-#    -b $BASE_DIR/$MDB \
-#    -w $BASE_DIR/$WA \
-#    --time-offset=10 \
-#    $@
+ls
+
+#find "$EXPORT_DIR"/ -name "*.html" -type f -mmin +120 -delete
+
+
